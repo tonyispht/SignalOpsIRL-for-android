@@ -186,6 +186,84 @@ object AdDecoder {
         return types.sorted().joinToString(",")
     }
 
+    // ---- identification hints -------------------------------------------------------------
+
+    /** Microsoft Connected Devices Platform device types (low 5 bits of the second payload byte): name, category. */
+    val MS_CDP = mapOf(
+        1 to ("Xbox" to "handhelds_gaming"), 6 to ("iPhone (Microsoft app)" to "smartphones"),
+        7 to ("iPad (Microsoft app)" to "laptops_tablets"), 8 to ("Android phone (Phone Link)" to "smartphones"),
+        9 to ("Windows PC" to "laptops_tablets"), 11 to ("Windows phone" to "smartphones"),
+        12 to ("Linux device" to "laptops_tablets"), 13 to ("Windows IoT device" to "smart_iot"),
+        14 to ("Surface Hub" to "laptops_tablets"), 15 to ("Windows laptop" to "laptops_tablets"),
+        16 to ("Windows tablet" to "laptops_tablets")
+    )
+
+    /**
+     * Stable identification clues that need the payload bytes, not just IDs: appearance (APPEAR:03C1), Microsoft
+     * Swift Pair (SWIFTPAIR) and Connected Devices type (MSCDP:09), Google Find Hub tracker frames (FMDN) and
+     * Fast Pair model IDs (FASTPAIR:XXXXXX).
+     */
+    fun hints(packets: List<ByteArray>): Set<String> {
+        val out = HashSet<String>()
+        for (pk in packets) {
+            var i = 0
+            while (i < pk.size) {
+                val l = u8(pk, i)
+                if (l == 0 || i + 1 + l > pk.size) break
+                val type = u8(pk, i + 1)
+                val s = i + 2
+                val e = i + 1 + l
+                when (type) {
+                    0x19 -> if (e - s >= 2) out.add("APPEAR:%04X".format(u16le(pk, s)))
+                    0xFF -> if (e - s >= 4 && u16le(pk, s) == 0x0006) {
+                        when (u8(pk, s + 2)) {
+                            0x03 -> out.add("SWIFTPAIR")
+                            0x01 -> out.add("MSCDP:%02X".format(u8(pk, s + 3) and 0x1F))
+                        }
+                    }
+                    0x16 -> if (e - s >= 3) {
+                        val u = u16le(pk, s)
+                        val f = u8(pk, s + 2)
+                        if (u == 0xFEAA && (f == 0x40 || f == 0x41)) out.add("FMDN")
+                        if (u == 0xFE2C && e - s == 5) out.add("FASTPAIR:%06X".format((f shl 16) or u16be(pk, s + 3)))
+                    }
+                }
+                i += l + 1
+            }
+        }
+        return out
+    }
+
+    /**
+     * UUIDs of every service-data structure (AD types 0x16, 0x20, 0x21) as 32 uppercase hex digits. Android's UUID
+     * list leaves these out, yet many devices (SmartTag, Fast Pair, Find Hub tags, drone Remote ID, Xiaomi) name
+     * themselves only here.
+     */
+    fun serviceDataUuids(packets: List<ByteArray>): Set<String> {
+        val out = HashSet<String>()
+        for (pk in packets) {
+            var i = 0
+            while (i < pk.size) {
+                val l = u8(pk, i)
+                if (l == 0 || i + 1 + l > pk.size) break
+                val type = u8(pk, i + 1)
+                val s = i + 2
+                val e = i + 1 + l
+                when (type) {
+                    0x16 -> if (e - s >= 2) out.add("0000%04X".format(u16le(pk, s)) + BtDb.BASE_SUFFIX)
+                    0x20 -> if (e - s >= 4) {
+                        val v = u8(pk, s).toLong() or (u8(pk, s + 1).toLong() shl 8) or
+                            (u8(pk, s + 2).toLong() shl 16) or (u8(pk, s + 3).toLong() shl 24)
+                        out.add("%08X".format(v) + BtDb.BASE_SUFFIX)
+                    }
+                    0x21 -> if (e - s >= 16) out.add(uuid128(pk, s, bigEndian = false).replace("-", "").uppercase())
+                }
+                i += l + 1
+            }
+        }
+        return out
+    }
+
     // ---- fingerprint ----------------------------------------------------------------------
 
     /**
@@ -297,7 +375,10 @@ object AdDecoder {
         0x08, 0x09 -> "\"" + String(d, s, e - s, Charsets.UTF_8).filter { !it.isISOControl() } + "\""
         0x0A -> if (e - s >= 1) "${s8(d, s)} dBm" else null
         0x12 -> if (e - s >= 4) "${fmt(u16le(d, s) * 1.25, 2)} - ${fmt(u16le(d, s + 2) * 1.25, 2)} ms" else null
-        0x19 -> if (e - s >= 2) "0x%04X".format(u16le(d, s)) else null
+        0x19 -> if (e - s >= 2) {
+            val v = u16le(d, s)
+            "0x%04X".format(v) + (BtDb.appearanceName(v)?.let { " ($it)" } ?: "")
+        } else null
         0x1A -> if (e - s >= 2) "${fmt(u16le(d, s) * 0.625, 1)} ms" else null
         0x16 -> if (e - s >= 2) serviceData16(u16le(d, s), d.copyOfRange(s + 2, e)) else null
         0x24 -> if (e - s >= 2) String(d, s + 1, e - s - 1, Charsets.UTF_8).filter { !it.isISOControl() } else null
@@ -314,6 +395,9 @@ object AdDecoder {
                     "tx ${s8(p, 22)} dBm @1m"
             id == 0x004C && p.isNotEmpty() ->
                 "Apple " + (APPLE_TYPES[u8(p, 0)] ?: "message type 0x%02X".format(u8(p, 0)))
+            id == 0x0006 && p.size >= 2 && u8(p, 0) == 0x03 -> "Microsoft Swift Pair (accessory ready to pair)"
+            id == 0x0006 && p.size >= 2 && u8(p, 0) == 0x01 ->
+                "Microsoft Connected Devices: " + (MS_CDP[u8(p, 1) and 0x1F]?.first ?: "device type %d".format(u8(p, 1) and 0x1F))
             else -> sensorMfg(id, p, null)?.let { it.kind + ": " + it.summary }
         }
         return if (detail != null) "$head\n$detail" else head

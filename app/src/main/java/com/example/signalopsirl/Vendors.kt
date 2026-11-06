@@ -11,16 +11,22 @@ import java.net.HttpURLConnection
 import java.net.URL
 
 /**
- * Offline MAC-address -> manufacturer lookup.
+ * Offline MAC-address -> manufacturer lookup for Bluetooth devices that advertise a public (fixed) address.
  *
- * Data comes from the IEEE registries (oui.csv, mam.csv, oui36.csv), downloaded once inside the app
- * or imported from a file, then kept in app storage. Wireshark "manuf" files also work.
- * An optional base file can be bundled at app/src/main/assets/oui.csv.
+ * The full IEEE registry (MA-L, MA-M and MA-S blocks) comes pre-installed in assets/btdb/oui.tsv, built by
+ * tools/build_bt_db.py, so it works from the first launch with no download. A newer list can still be fetched
+ * or imported from Settings; those entries are kept in app storage and override the bundled ones.
  */
 object Vendors {
     @Volatile private var table: Map<String, String> = emptyMap()
 
+    /** Entries in use (bundled + downloaded/imported). */
     val count = MutableStateFlow(0)
+    /** Entries that came pre-installed with the app. */
+    val bundled = MutableStateFlow(0)
+    /** Entries added on top by DOWNLOAD UPDATE or IMPORT FILE. */
+    val extra = MutableStateFlow(0)
+    @Volatile private var loaded = false
     val status = MutableStateFlow<String?>(null)
     val busy = MutableStateFlow(false)
 
@@ -48,15 +54,36 @@ object Vendors {
 
     // ---- load / save ------------------------------------------------------------------------
 
-    /** Blocking; call off the main thread. */
-    fun load(ctx: Context) {
+    /** Blocking; call off the main thread. Loads once; the activity and the scan service both call it. */
+    @Synchronized
+    fun load(ctx: Context, force: Boolean = false) {
+        if (loaded && !force) return
         val m = HashMap<String, String>(80_000)
+        readBundled(ctx, m)
+        // Older builds could bundle a raw IEEE CSV here; still honoured if present.
         try {
             ctx.assets.open("oui.csv").use { parse(it, m) }
         } catch (_: Exception) {
         }
-        readSaved(ctx, m)
+        bundled.value = m.size
+        val saved = HashMap<String, String>()
+        readSaved(ctx, saved)
+        extra.value = saved.keys.count { it !in m }
+        m.putAll(saved)
         publish(m)
+        loaded = true
+    }
+
+    /** assets/btdb/oui.tsv: "PREFIX<TAB>Vendor", PREFIX = 6, 7 or 9 hex digits. */
+    private fun readBundled(ctx: Context, into: MutableMap<String, String>) {
+        runCatching {
+            ctx.assets.open("btdb/oui.tsv").bufferedReader(Charsets.UTF_8).useLines { lines ->
+                for (l in lines) {
+                    val i = l.indexOf('\t')
+                    if (i in 6..9 && i < l.length - 1) into[l.substring(0, i)] = l.substring(i + 1)
+                }
+            }
+        }
     }
 
     private fun readSaved(ctx: Context, into: MutableMap<String, String>) {
@@ -94,16 +121,18 @@ object Vendors {
             tmp.renameTo(dest)
         }
         val all = HashMap(table)
+        val before = all.size
         all.putAll(add)
+        extra.value += all.size - before
         publish(all)
     }
 
-    /** Removes downloaded/imported data (a bundled assets/oui.csv stays). */
+    /** Removes downloaded/imported updates; the pre-installed list stays. */
     @Synchronized
     fun clear(ctx: Context) {
         savedFile(ctx).delete()
-        load(ctx)
-        status.value = "DATABASE CLEARED"
+        load(ctx, force = true)
+        status.value = "UPDATES REMOVED \u00B7 BUILT-IN LIST KEPT"
     }
 
     // ---- download / import -------------------------------------------------------------------
@@ -126,7 +155,7 @@ object Vendors {
         }
         if (got.isEmpty()) return "NO DATA RECEIVED"
         merge(ctx, got)
-        return "LOADED ${got.size} ENTRIES"
+        return "UPDATE DONE \u00B7 ${got.size} ENTRIES CHECKED"
     }
 
     private fun fetch(url: String, into: MutableMap<String, String>) {

@@ -39,7 +39,7 @@ It's also a practical way to learn how Bluetooth works and to check what your ow
 - **Device database:** recognises common device types (phones, earbuds, watches, trackers, sensors and more) from what they broadcast.
 - **Advertising data viewer:** decodes flags, service UUIDs, manufacturer data, Apple Continuity messages and more.
 - **Sensor readouts:** decodes broadcast measurements from sensors such as Ruuvi tags without connecting.
-- **Vendor lookup:** matches MAC prefixes to manufacturers using the IEEE registry (downloaded once, then works offline).
+- **Built-in Bluetooth database:** the full Bluetooth SIG company, service UUID and appearance lists plus the IEEE MAC prefix registry ship inside the app, so devices are identified offline from the first launch.
 - **Custom names** for the devices you recognise, and grouping for devices that rotate their addresses.
 
 ### Personal security
@@ -89,7 +89,7 @@ To make an installable APK, use **Build > Build Bundle(s) / APK(s) > Build APK(s
 
 - **Everything stays on your phone.** The app has no accounts, no analytics and no ads, and it doesn't upload what it scans.
 - Location, when enabled, is kept in memory only and is never stored.
-- The only network request is the optional, user-triggered download of the public IEEE manufacturer list.
+- The only network request is the optional, user-triggered update of the public IEEE manufacturer list (a full copy is already built in).
 
 ## Terms of Responsible Use
 

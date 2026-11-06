@@ -218,7 +218,7 @@ class ScanService : Service() {
         // Parse the bundled scanner_config.json off the main thread; devices seen before it finishes
         // are classified the next time they advertise (the version number is part of the cache key).
         val app = applicationContext
-        Thread { Classifier.loadAssets(app) }.start()
+        Thread { Classifier.loadAssets(app); Vendors.load(app) }.start()
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -879,23 +879,29 @@ class ScanService : Service() {
             }
         }
         for (u in a.services) if (u !in svcs) svcs = svcs + u
-
-        // Only re-run the classifier when its inputs changed (name, new evidence, config or IEEE db loaded).
-        val key = java.util.Objects.hash(name, cids, svcs, apple, Classifier.version, Vendors.count.value)
-        var cls = prev?.cls
-        if (prev == null || prev.clsKey != key) {
-            val vendor = if (Vendors.isLocal(addr)) null else Vendors.lookup(addr)
-            cls = Classifier.classify(Evidence(addr, name, cids, svcs, apple, vendor))
+        // Service-data UUIDs and payload clues (appearance, Swift Pair, Find Hub...) come from the raw packets.
+        var hints = prev?.hints ?: emptySet()
+        ScanBus.rawAds[addr]?.packets?.let { pk ->
+            for (u in AdDecoder.serviceDataUuids(pk)) if (u !in svcs) svcs = svcs + u
+            for (h in AdDecoder.hints(pk)) if (h !in hints) hints = hints + h
         }
         val transport = (prev?.transport ?: 0) or (if (classic) 2 else 1)
         val devCod = if (cod >= 0) cod else prev?.cod ?: -1
+
+        // Only re-run the classifier when its inputs changed (name, new evidence, config or IEEE db loaded).
+        val key = java.util.Objects.hash(name, cids, svcs, apple, hints, devCod, Classifier.version, Vendors.count.value)
+        var cls = prev?.cls
+        if (prev == null || prev.clsKey != key) {
+            val vendor = if (Vendors.isLocal(addr)) null else Vendors.lookup(addr)
+            cls = Classifier.classify(Evidence(addr, name, cids, svcs, apple, vendor, hints, devCod))
+        }
         val hit = isTarget(addr, name, rssi, cids, svcs, apple, cls, now, a, transport, devCod)
         val dev = SeenDevice(
             addr, name, rssi, now, hit, cls, cids, svcs, apple, key,
             identity = ident?.id ?: 0, linked = ident?.addrs?.size ?: 1,
             firstSeen = prev?.firstSeen?.takeIf { it > 0L } ?: now,
             transport = transport, cod = devCod,
-            appleModel = appleModel, appleState = appleState
+            appleModel = appleModel, appleState = appleState, hints = hints
         )
         val auto = cls != null &&
             ((cls.tier == Tier.ALERT && store.autoAlertOn) || (cls.tier == Tier.POSSIBLE && store.autoPossibleOn))
@@ -1135,8 +1141,8 @@ class ScanService : Service() {
         Game.onIdentified(addr)
         val d = devs[addr] ?: return
         val vendor = if (Vendors.isLocal(addr)) null else Vendors.lookup(addr)
-        val key = java.util.Objects.hash(name, d.companyIds, d.services, d.appleTypes, Classifier.version, Vendors.count.value)
-        val cls = Classifier.classify(Evidence(addr, name, d.companyIds, d.services, d.appleTypes, vendor))
+        val key = java.util.Objects.hash(name, d.companyIds, d.services, d.appleTypes, d.hints, d.cod, Classifier.version, Vendors.count.value)
+        val cls = Classifier.classify(Evidence(addr, name, d.companyIds, d.services, d.appleTypes, vendor, d.hints, d.cod))
         val hit = isTarget(addr, name, d.rssi, d.companyIds, d.services, d.appleTypes, cls, now, null, d.transport, d.cod)
         val dev = d.copy(name = name, matched = hit, cls = cls, clsKey = key)
         devs[addr] = dev

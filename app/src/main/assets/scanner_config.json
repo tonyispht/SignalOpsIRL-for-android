@@ -3762,7 +3762,7 @@
   "_meta": {
     "revised": "2026-10-12",
     "notes": [
-    "2026-10-25 evidence fusion: law-enforcement clues (name, OUI, company ID, Raven service UUIDs 0x3100-0x3500) are now combined. A strong clue alerts alone; weak clues are POSSIBLE alone and become ALERT when two different kinds agree. Raven UUIDs come from public research and are unverified on live units.",
+      "2026-10-25 evidence fusion: law-enforcement clues (name, OUI, company ID, Raven service UUIDs 0x3100-0x3500) are now combined. A strong clue alerts alone; weak clues are POSSIBLE alone and become ALERT when two different kinds agree. Raven UUIDs come from public research and are unverified on live units.",
       "company_ids hold only IDs cross-checked against SIG-derived sources; the full SIG list (--update-db) is authoritative and wins over this file",
       "oui_confidence: alert | possible | info:<category>; used by scanner.py only. Flock OUIs other than B4:1E:52 are shared component-vendor prefixes = weak evidence",
       "unverified_ouis are kept for review and are NOT used for matching",
@@ -3781,7 +3781,8 @@
       "2026-10-10 research: added 18 community-list OUIs (Axon D8:1F:65, ShotSpotter, Digital Ally, VieVu, Utility, Zepcam, Genetec, Elsag...) to unverified_ouis only (NOT matched; mostly Wi-Fi/Ethernet prefixes, no BLE confirmation). Added alert name 'bwcdevice' (Axon body-cam advertising tag) and possible name ^fs-<hex> (Flock battery pack).",
       "vendor_categories: {category: [vendor names]} maps a SIG company / IEEE OUI owner to a category (plain text = whole word, 're:' = regex). It is the weakest evidence: any name, service or Apple/Microsoft rule beats it. The session report's 'Adv clues' column shows the company IDs and service UUIDs behind each device so you can write the next rules.",
       "2026-10-11 round 4: service_rules for FCF1/FEF3 (Google), Fi collar (128-bit 57B40001…), Zebra FE79, Fitbit FD62; Fi collar name regex; TV terms (crystal uhd, uhd tv, [tv]) so Samsung TVs stop landing in smartphones.",
-      "2026-10-12 round 5b (e-mobility + gap fill): ev_micromobility gets the real advertised-name formats, not just brands: MIScooter####, Ninebot*/Segway* (no-space variants), Onewheel 'ow'+6 digits plus its 128-bit service E659F300…, KingSong KS-xx, Leaperkim LK#####, Bafang DPC244, Shimano E-TUBE/Di2 model codes, SRAM AXS, e-skateboards (Boosted/Exway/Meepo/Backfire/VESC), hoverboards, more e-bike drive systems and brands, electric motorcycles/scooters, more EV chargers, plus vendor_categories for SIG/IEEE owners (Shimano, SRAM, Ninebot, Segway, Bafang ...). Power wheelchairs/prosthetics went to accessibility_hearing_assistive, golf trolleys/smart helmets/cycling lights to fitness_gym. Gap fill elsewhere: Dexcom G6/G7 (Dexcom+2 / DXCM+2), Libre (ABBOTT+serial), Omnipod DASH (TWI BOARD), Omron BLESmart, A&D UA-651BLE, QN-Scale; SwitchBot Wo* names, SP110E/LEDnet/QHM LED controllers, ATC_xxxxxx thermometers, ThermoPro TPxxx, eQ-3/Comet Blue radiator valves; Victron Smart*/Renogy BT-TH; Garmin/Casio/Samsung Gear/Huawei Watch model families; OBD dongles (LELink/Vgate/Konnwei), more car brands, TV remotes, LEGO hubs, Quest/Stadia, Even G1. Many Shimano/Bafang/e-skate/EUC names are from community reverse-engineering and not verified against live captures; confirm with the 'Adv clues' column and trim what never shows up."
+      "2026-10-12 round 5b (e-mobility + gap fill): ev_micromobility gets the real advertised-name formats, not just brands: MIScooter####, Ninebot*/Segway* (no-space variants), Onewheel 'ow'+6 digits plus its 128-bit service E659F300…, KingSong KS-xx, Leaperkim LK#####, Bafang DPC244, Shimano E-TUBE/Di2 model codes, SRAM AXS, e-skateboards (Boosted/Exway/Meepo/Backfire/VESC), hoverboards, more e-bike drive systems and brands, electric motorcycles/scooters, more EV chargers, plus vendor_categories for SIG/IEEE owners (Shimano, SRAM, Ninebot, Segway, Bafang ...). Power wheelchairs/prosthetics went to accessibility_hearing_assistive, golf trolleys/smart helmets/cycling lights to fitness_gym. Gap fill elsewhere: Dexcom G6/G7 (Dexcom+2 / DXCM+2), Libre (ABBOTT+serial), Omnipod DASH (TWI BOARD), Omron BLESmart, A&D UA-651BLE, QN-Scale; SwitchBot Wo* names, SP110E/LEDnet/QHM LED controllers, ATC_xxxxxx thermometers, ThermoPro TPxxx, eQ-3/Comet Blue radiator valves; Victron Smart*/Renogy BT-TH; Garmin/Casio/Samsung Gear/Huawei Watch model families; OBD dongles (LELink/Vgate/Konnwei), more car brands, TV remotes, LEGO hubs, Quest/Stadia, Even G1. Many Shimano/Bafang/e-skate/EUC names are from community reverse-engineering and not verified against live captures; confirm with the 'Adv clues' column and trim what never shows up.",
+      "2026-11-06 offline Bluetooth database: the app now ships the full Bluetooth SIG company list, every SIG/member/SDO 16-bit service UUID, GAP appearance names and the IEEE MAC prefix list in assets/btdb/ (rebuilt with tools/build_bt_db.py). company_ids here still win over the SIG names. New service_rules for trackers (Tile FEED/FEEC/FD84, Chipolo FE33/FE65, SmartTag FD5A, DULT FCB2), drone Remote ID FFFA, FIDO FFFD, Matter/Thread/Zigbee Direct, digital car keys, medical (Dexcom FEBC, Libre FDE3, Medtronic), hearing aids, LE Audio/Auracast, fitness standard services, and appearance_categories for devices that only say what kind of device they are."
     ],
     "schema": {
       "categories": "{category_key: [terms]} - unknown keys automatically get a dashboard panel (icon/colour from category_meta or defaults)",
@@ -3793,7 +3794,8 @@
       "service_rules": "{'FEAA': ['category','label',confidence]} GATT service UUID -> category",
       "target_ouis / oui_confidence": "MAC prefix -> label, and 'alert' | 'possible' | 'info:<category>'",
       "company_ids": "{'0x004C': 'Apple'} extra SIG company ids",
-      "custom_names / ignore_list": "MAC -> display name, MACs to hide"
+      "custom_names / ignore_list": "MAC -> display name, MACs to hide",
+      "appearance_categories": "{'0x003': 'category'} GAP appearance category (value >> 6) -> category; used when nothing stronger identifies the device"
     }
   },
   "tactical_categories": [
@@ -4071,6 +4073,461 @@
       "ev_micromobility",
       "Onewheel (Future Motion)",
       80
+    ],
+    "FEED": [
+      "trackers_valuables",
+      "Tile tracker",
+      90
+    ],
+    "FEEC": [
+      "trackers_valuables",
+      "Tile tracker",
+      90
+    ],
+    "FD84": [
+      "trackers_valuables",
+      "Tile tracker",
+      90
+    ],
+    "FE33": [
+      "trackers_valuables",
+      "Chipolo tracker",
+      90
+    ],
+    "FE65": [
+      "trackers_valuables",
+      "Chipolo tracker",
+      90
+    ],
+    "FD5A": [
+      "trackers_valuables",
+      "Samsung SmartTag",
+      90
+    ],
+    "FCB2": [
+      "trackers_valuables",
+      "Item tracker (unwanted-tracking protocol)",
+      88
+    ],
+    "FFFA": [
+      "hobby_rc_drones",
+      "Drone Remote ID broadcast",
+      95
+    ],
+    "FFFD": [
+      "crypto_security_keys",
+      "FIDO security key",
+      85
+    ],
+    "FFF6": [
+      "smart_iot",
+      "Matter device (setup mode)",
+      70
+    ],
+    "FFF7": [
+      "smart_iot",
+      "Zigbee Direct device",
+      70
+    ],
+    "FFFB": [
+      "smart_iot",
+      "Thread device (setup mode)",
+      70
+    ],
+    "FFFE": [
+      "smart_iot",
+      "Wireless charger",
+      50
+    ],
+    "FFFC": [
+      "smart_iot",
+      "Wireless charger",
+      50
+    ],
+    "FFF5": [
+      "auto_aerial",
+      "Digital car key (CCC)",
+      75
+    ],
+    "FFF1": [
+      "auto_aerial",
+      "Digital car key (ICCE)",
+      75
+    ],
+    "FE96": [
+      "auto_aerial",
+      "Tesla vehicle / phone key",
+      80
+    ],
+    "FE97": [
+      "auto_aerial",
+      "Tesla vehicle / phone key",
+      80
+    ],
+    "1860": [
+      "auto_aerial",
+      "Tire pressure sensor (TPMS)",
+      70
+    ],
+    "FFF2": [
+      "security_access_control",
+      "Aliro door access",
+      75
+    ],
+    "FFF0": [
+      "security_access_control",
+      "PKOC access credential",
+      75
+    ],
+    "FFF8": [
+      "computer_peripherals",
+      "Printer (Mopria)",
+      70
+    ],
+    "FE61": [
+      "computer_peripherals",
+      "Logitech peripheral",
+      65
+    ],
+    "FD72": [
+      "computer_peripherals",
+      "Logitech peripheral",
+      65
+    ],
+    "1812": [
+      "computer_peripherals",
+      "Bluetooth HID (keyboard / mouse / controller)",
+      50
+    ],
+    "FE0F": [
+      "smart_iot",
+      "Philips Hue light (Signify)",
+      70
+    ],
+    "FE4B": [
+      "smart_iot",
+      "Philips Hue light (Signify)",
+      70
+    ],
+    "FD8A": [
+      "smart_iot",
+      "Philips Hue light (Signify)",
+      70
+    ],
+    "FEAF": [
+      "smart_iot",
+      "Google Nest device",
+      65
+    ],
+    "FEB0": [
+      "smart_iot",
+      "Google Nest device",
+      65
+    ],
+    "FE95": [
+      "smart_iot",
+      "Xiaomi MiBeacon device",
+      55
+    ],
+    "FE00": [
+      "smart_iot",
+      "Amazon / Alexa device",
+      55
+    ],
+    "FE03": [
+      "smart_iot",
+      "Amazon / Alexa device",
+      55
+    ],
+    "1827": [
+      "smart_iot",
+      "Bluetooth Mesh node",
+      45
+    ],
+    "1828": [
+      "smart_iot",
+      "Bluetooth Mesh node",
+      45
+    ],
+    "185D": [
+      "smart_appliances",
+      "Smart cookware",
+      60
+    ],
+    "FE71": [
+      "networking_mesh",
+      "Plume Wi-Fi pod",
+      60
+    ],
+    "FD1E": [
+      "networking_mesh",
+      "Plume Wi-Fi pod",
+      60
+    ],
+    "1857": [
+      "commercial_pos_retail",
+      "Electronic shelf label",
+      70
+    ],
+    "FEBC": [
+      "medical_health",
+      "Dexcom CGM",
+      85
+    ],
+    "FDE3": [
+      "medical_health",
+      "Abbott FreeStyle Libre / diabetes device",
+      85
+    ],
+    "FE81": [
+      "medical_health",
+      "Medtronic medical device",
+      80
+    ],
+    "FE82": [
+      "medical_health",
+      "Medtronic medical device",
+      80
+    ],
+    "FCA8": [
+      "medical_health",
+      "Medtronic medical device",
+      80
+    ],
+    "FCA9": [
+      "medical_health",
+      "Medtronic medical device",
+      80
+    ],
+    "FE72": [
+      "medical_health",
+      "Abbott medical device",
+      75
+    ],
+    "FE73": [
+      "medical_health",
+      "Abbott medical device",
+      75
+    ],
+    "FD86": [
+      "medical_health",
+      "Abbott medical device",
+      75
+    ],
+    "181F": [
+      "medical_health",
+      "Continuous glucose monitor",
+      70
+    ],
+    "183A": [
+      "medical_health",
+      "Insulin pump",
+      70
+    ],
+    "1808": [
+      "medical_health",
+      "Glucose meter",
+      60
+    ],
+    "1810": [
+      "medical_health",
+      "Blood pressure monitor",
+      60
+    ],
+    "1809": [
+      "medical_health",
+      "Health thermometer",
+      60
+    ],
+    "1822": [
+      "medical_health",
+      "Pulse oximeter",
+      60
+    ],
+    "181D": [
+      "medical_health",
+      "Smart scale",
+      55
+    ],
+    "181B": [
+      "medical_health",
+      "Smart scale",
+      55
+    ],
+    "FEFE": [
+      "accessibility_hearing_assistive",
+      "Hearing aid (GN ReSound)",
+      80
+    ],
+    "FD71": [
+      "accessibility_hearing_assistive",
+      "Hearing aid (GN ReSound)",
+      80
+    ],
+    "FD20": [
+      "accessibility_hearing_assistive",
+      "Hearing aid (GN ReSound)",
+      80
+    ],
+    "FCFE": [
+      "accessibility_hearing_assistive",
+      "Hearing device (Sonova)",
+      75
+    ],
+    "1854": [
+      "accessibility_hearing_assistive",
+      "Hearing aid (LE Audio)",
+      80
+    ],
+    "FEFF": [
+      "audio_wearables",
+      "Jabra headset (GN)",
+      65
+    ],
+    "FEBE": [
+      "audio_wearables",
+      "Bose audio",
+      70
+    ],
+    "FE21": [
+      "audio_wearables",
+      "Bose audio",
+      70
+    ],
+    "FDD2": [
+      "audio_wearables",
+      "Bose audio",
+      70
+    ],
+    "FC8F": [
+      "audio_wearables",
+      "Bose audio",
+      70
+    ],
+    "FDCE": [
+      "audio_wearables",
+      "Sennheiser audio",
+      70
+    ],
+    "FDDF": [
+      "audio_wearables",
+      "Harman audio (JBL / AKG / Harman Kardon)",
+      65
+    ],
+    "FC7E": [
+      "audio_wearables",
+      "Harman audio (JBL / AKG / Harman Kardon)",
+      65
+    ],
+    "FC69": [
+      "audio_wearables",
+      "Harman audio (JBL / AKG / Harman Kardon)",
+      65
+    ],
+    "FC39": [
+      "audio_wearables",
+      "Harman audio (JBL / AKG / Harman Kardon)",
+      65
+    ],
+    "184E": [
+      "audio_wearables",
+      "LE Audio earbuds / speaker",
+      55
+    ],
+    "1850": [
+      "audio_wearables",
+      "LE Audio earbuds / speaker",
+      55
+    ],
+    "1853": [
+      "audio_wearables",
+      "LE Audio earbuds / speaker",
+      55
+    ],
+    "1855": [
+      "audio_wearables",
+      "LE Audio earbuds / speaker",
+      55
+    ],
+    "1858": [
+      "audio_wearables",
+      "LE Audio earbuds / speaker",
+      55
+    ],
+    "1851": [
+      "audio_wearables",
+      "Auracast broadcast audio",
+      55
+    ],
+    "1852": [
+      "audio_wearables",
+      "Auracast broadcast audio",
+      55
+    ],
+    "1856": [
+      "audio_wearables",
+      "Auracast broadcast audio",
+      55
+    ],
+    "FE2C": [
+      "audio_wearables",
+      "Google Fast Pair accessory",
+      45
+    ],
+    "FDB0": [
+      "wearables_audio",
+      "Oura ring",
+      80
+    ],
+    "FDB1": [
+      "wearables_audio",
+      "Oura ring",
+      80
+    ],
+    "FE1F": [
+      "wearables_audio",
+      "Garmin device",
+      60
+    ],
+    "FEEE": [
+      "fitness_gym",
+      "Polar sensor / watch",
+      70
+    ],
+    "FEEF": [
+      "fitness_gym",
+      "Polar sensor / watch",
+      70
+    ],
+    "180D": [
+      "fitness_gym",
+      "Heart-rate sensor",
+      60
+    ],
+    "1816": [
+      "fitness_gym",
+      "Cycling speed / cadence sensor",
+      60
+    ],
+    "1818": [
+      "fitness_gym",
+      "Cycling power meter",
+      60
+    ],
+    "1814": [
+      "fitness_gym",
+      "Running footpod",
+      60
+    ],
+    "1826": [
+      "fitness_gym",
+      "Fitness machine",
+      60
+    ],
+    "FC7C": [
+      "smartphones",
+      "Motorola phone",
+      50
     ]
   },
   "vendor_categories": {
@@ -4156,5 +4613,60 @@
       "fazua",
       "mahle"
     ]
+  },
+  "appearance_categories": {
+    "0x001": "smartphones",
+    "0x002": "laptops_tablets",
+    "0x003": "wearables_audio",
+    "0x005": "home_entertainment_av",
+    "0x006": "home_entertainment_av",
+    "0x007": "smart_glasses_ai_wearables",
+    "0x008": "trackers_valuables",
+    "0x009": "trackers_valuables",
+    "0x00A": "home_entertainment_av",
+    "0x00B": "commercial_pos_retail",
+    "0x00C": "medical_health",
+    "0x00D": "fitness_gym",
+    "0x00E": "medical_health",
+    "0x00F": "computer_peripherals",
+    "0x010": "medical_health",
+    "0x011": "fitness_gym",
+    "0x012": "fitness_gym",
+    "0x013": "smart_iot",
+    "0x014": "networking_mesh",
+    "0x015": "smart_iot",
+    "0x016": "smart_iot",
+    "0x017": "smart_appliances",
+    "0x018": "smart_appliances",
+    "0x019": "smart_appliances",
+    "0x01A": "smart_appliances",
+    "0x01B": "smart_appliances",
+    "0x01C": "security_access_control",
+    "0x01D": "smart_iot",
+    "0x01E": "smart_iot",
+    "0x01F": "smart_iot",
+    "0x020": "smart_iot",
+    "0x021": "audio_wearables",
+    "0x022": "audio_wearables",
+    "0x023": "auto_aerial",
+    "0x024": "smart_appliances",
+    "0x025": "audio_wearables",
+    "0x026": "aviation_marine_gliding",
+    "0x027": "home_entertainment_av",
+    "0x028": "home_entertainment_av",
+    "0x029": "accessibility_hearing_assistive",
+    "0x02A": "handhelds_gaming",
+    "0x02B": "venues_facilities",
+    "0x031": "medical_health",
+    "0x032": "medical_health",
+    "0x033": "accessibility_hearing_assistive",
+    "0x034": "medical_health",
+    "0x035": "medical_health",
+    "0x036": "medical_health",
+    "0x037": "medical_health",
+    "0x051": "fitness_gym",
+    "0x052": "industrial_logistics",
+    "0x053": "construction_mining_oilgas_heavy",
+    "0x054": "smart_appliances"
   }
 }
