@@ -1,2 +1,0 @@
-New app ID (io.github.tonyispht.signalopsirl) so Signal OPS IRL can be listed on F-Droid. Coming from the old version? It moves your XP, Dex, quests, settings and names across with one tap.
-Includes the built-in Bluetooth database, exact earbud/speaker model names, BLE spam detection and the unidentified-devices export.

@@ -339,10 +339,6 @@ class Store(context: Context) {
         get() = prefs.getBoolean("autoUpdateCheck", true)
         set(v) = prefs.edit().putBoolean("autoUpdateCheck", v).apply()
 
-    /** Set once progress has been imported from the old-ID app (see Migration). */
-    val migratedFromLegacy: Boolean
-        get() = prefs.getBoolean("migratedFromLegacy", false)
-
     var lastUpdateCheck: Long
         get() = prefs.getLong("lastUpdateCheck", 0L)
         set(v) = prefs.edit().putLong("lastUpdateCheck", v).apply()

@@ -421,7 +421,6 @@ fun App(store: Store) {
     var autoUpd by remember { mutableStateOf(store.autoUpdateCheckOn) }
     var updDismissed by rememberSaveable { mutableStateOf(false) }
     val upd by Updater.state.collectAsState()
-    val migrationOn = remember { migrationRelevant(ctx) }
     LaunchedEffect(Unit) { withContext(Dispatchers.IO) { Updater.autoCheck(ctx.applicationContext, store) } }
 
     LaunchedEffect(Unit) { withContext(Dispatchers.IO) { Vendors.load(ctx.applicationContext) } }
@@ -778,11 +777,8 @@ fun App(store: Store) {
                     )
                 }
 
-                // Moving from the old app ID to the new one
-                if (migrationOn) item { MigrationCard(store) }
-
                 // Update available (from the automatic or manual check)
-                if (BuildConfig.SELF_UPDATE && !updDismissed && upd.release != null && upd.phase != UpdatePhase.IDLE &&
+                if (!updDismissed && upd.release != null && upd.phase != UpdatePhase.IDLE &&
                     upd.phase != UpdatePhase.UP_TO_DATE && upd.phase != UpdatePhase.CHECKING
                 ) {
                     item {
@@ -1404,6 +1400,24 @@ fun App(store: Store) {
                         .padding(start = 10.dp, end = 10.dp, top = 8.dp, bottom = 12.dp)
                 ) {
                     HudCard {
+                        Box(Modifier.padding(start = 10.dp, end = 10.dp, top = 6.dp, bottom = 2.dp)) {
+                            ActionRow(
+                                "☕ SUPPORT THE DEVELOPER",
+                                "ENJOYING SIGNAL OPS IRL? BUY ME A COFFEE (OPENS IN YOUR BROWSER)",
+                                cs.tertiary
+                            ) {
+                                try {
+                                    ctx.startActivity(
+                                        android.content.Intent(
+                                            android.content.Intent.ACTION_VIEW,
+                                            android.net.Uri.parse(SUPPORT_URL)
+                                        ).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+                                    )
+                                } catch (e: android.content.ActivityNotFoundException) {
+                                    android.widget.Toast.makeText(ctx, "No browser found. Visit $SUPPORT_URL", android.widget.Toast.LENGTH_LONG).show()
+                                }
+                            }
+                        }
 
                         GroupLabel("ALERT")
                         SettingToggle(
@@ -1632,24 +1646,6 @@ fun App(store: Store) {
                                 termsOpen = true
                             }
                         }
-                        Box(Modifier.padding(horizontal = 10.dp, vertical = 4.dp)) {
-                            ActionRow(
-                                "☕ SUPPORT THE DEVELOPER",
-                                "ENJOYING SIGNAL OPS IRL? BUY ME A COFFEE (OPENS IN YOUR BROWSER)",
-                                cs.tertiary
-                            ) {
-                                try {
-                                    ctx.startActivity(
-                                        android.content.Intent(
-                                            android.content.Intent.ACTION_VIEW,
-                                            android.net.Uri.parse(SUPPORT_URL)
-                                        ).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
-                                    )
-                                } catch (e: android.content.ActivityNotFoundException) {
-                                    android.widget.Toast.makeText(ctx, "No browser found. Visit $SUPPORT_URL", android.widget.Toast.LENGTH_LONG).show()
-                                }
-                            }
-                        }
                         Spacer(Modifier.height(4.dp))
                         SectionHeader(
                             "Adapter", adapterOpen, { adapterOpen = !adapterOpen },
@@ -1848,12 +1844,12 @@ fun App(store: Store) {
                                 }
                             }
                         }
-                        if (BuildConfig.SELF_UPDATE) SectionHeader(
+                        SectionHeader(
                             "App updates", updatesOpen, { updatesOpen = !updatesOpen },
                             summary = "v" + remember { Updater.installedName(ctx) } +
                                 if (upd.phase == UpdatePhase.AVAILABLE) " \u00B7 NEW v${upd.release?.versionName}" else ""
                         )
-                        if (BuildConfig.SELF_UPDATE && updatesOpen) {
+                        if (updatesOpen) {
                             Column(
                                 Modifier.padding(start = 10.dp, end = 10.dp, bottom = 10.dp),
                                 verticalArrangement = Arrangement.spacedBy(4.dp)
