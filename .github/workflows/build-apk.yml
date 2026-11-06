@@ -33,16 +33,21 @@ jobs:
 
       - name: Work out the version
         run: |
-          TAG="${{ github.event.release.tag_name || github.ref_name }}"
-          if [[ "${{ github.event_name }}" == "release" || "$GITHUB_REF_TYPE" == "tag" ]]; then
+          # The version lives in app/build.gradle.kts (appVersionCode / appVersionName), where F-Droid reads it too.
+          CODE=$(sed -nE 's/^val appVersionCode = ([0-9]+).*/\1/p' app/build.gradle.kts)
+          NAME=$(sed -nE 's/^val appVersionName = "([^"]+)".*/\1/p' app/build.gradle.kts)
+          echo "VERSION_CODE=$CODE" >> "$GITHUB_ENV"
+          echo "VERSION_NAME=$NAME" >> "$GITHUB_ENV"
+          if [[ "${{ github.event_name }}" == "release" ]]; then
+            TAG="${{ github.event.release.tag_name }}"
+            if [[ "$TAG" != "v$NAME" ]]; then
+              echo "::error::Release tag $TAG does not match appVersionName $NAME in app/build.gradle.kts. Bump the version first."
+              exit 1
+            fi
             echo "LABEL=$TAG" >> "$GITHUB_ENV"
-            echo "VERSION_NAME=${TAG#v}" >> "$GITHUB_ENV"
           else
             echo "LABEL=build-${GITHUB_RUN_NUMBER}" >> "$GITHUB_ENV"
-            echo "VERSION_NAME=dev-${GITHUB_RUN_NUMBER}" >> "$GITHUB_ENV"
           fi
-          # Always increases, so every new APK installs over the previous one.
-          echo "VERSION_CODE=$((100 + GITHUB_RUN_NUMBER))" >> "$GITHUB_ENV"
 
       - name: Restore the release signing key
         env:
@@ -69,21 +74,30 @@ jobs:
           echo "SIGNING_STORE_PASSWORD=$PW" >> "$GITHUB_ENV"
           echo "SIGNED=1" >> "$GITHUB_ENV"
 
-      - name: Build APK
+      - name: Build APKs
         run: |
-          if [[ "$SIGNED" == "1" ]]; then
-            gradle --no-daemon assembleRelease
-            cp app/build/outputs/apk/release/app-release.apk "SignalOpsIRL-${LABEL}.apk"
-          else
-            gradle --no-daemon assembleDebug
-            cp app/build/outputs/apk/debug/app-debug.apk "SignalOpsIRL-${LABEL}.apk"
-          fi
-          echo "APK=SignalOpsIRL-${LABEL}.apk" >> "$GITHUB_ENV"
-          # update.json lets the app's in-app updater check the version and the download's integrity.
-          SHA=$(sha256sum "SignalOpsIRL-${LABEL}.apk" | cut -d' ' -f1)
-          printf '{"versionCode": %s, "versionName": "%s", "apk": "%s", "sha256": "%s", "signed": %s}\n' \
-            "$VERSION_CODE" "$VERSION_NAME" "SignalOpsIRL-${LABEL}.apk" "$SHA" "$([[ "$SIGNED" == "1" ]] && echo true || echo false)" > update.json
-          cat update.json
+          # Two APKs from the same code: the app under its ID, and the "bridge" under the original ID
+          # (com.example.signalopsirl) that moves 1.x players across (see Migration.kt).
+          if [[ "$SIGNED" == "1" ]]; then TASK=assembleGithubRelease; OUT=app/build/outputs/apk/github/release/app-github-release.apk
+          else TASK=assembleGithubDebug; OUT=app/build/outputs/apk/github/debug/app-github-debug.apk; fi
+          APK="SignalOpsIRL-${LABEL}.apk"
+          BRIDGE="SignalOpsIRL-${LABEL}-old-app-bridge.apk"
+          gradle --no-daemon "$TASK"
+          cp "$OUT" "$APK"
+          gradle --no-daemon "$TASK" -Plegacy
+          cp "$OUT" "$BRIDGE"
+          echo "APK=$APK" >> "$GITHUB_ENV"
+          echo "BRIDGE=$BRIDGE" >> "$GITHUB_ENV"
+          # update-<app id>.json: what the in-app updater of each app ID installs. update.json is read by 1.1 / 1.2,
+          # which only exist under the original ID, so it points at the bridge.
+          meta() {
+            printf '{"versionCode": %s, "versionName": "%s", "apk": "%s", "sha256": "%s", "signed": %s}\n' \
+              "$VERSION_CODE" "$VERSION_NAME" "$1" "$(sha256sum "$1" | cut -d' ' -f1)" "$([[ "$SIGNED" == "1" ]] && echo true || echo false)"
+          }
+          meta "$APK" > update-io.github.tonyispht.signalopsirl.json
+          meta "$BRIDGE" > update-com.example.signalopsirl.json
+          cp update-com.example.signalopsirl.json update.json
+          cat update-*.json
 
       - name: Remove the signing key
         if: always()
@@ -95,7 +109,8 @@ jobs:
           name: SignalOpsIRL-apk
           path: |
             ${{ env.APK }}
-            update.json
+            ${{ env.BRIDGE }}
+            update*.json
 
       - name: Publish GitHub Release
         if: github.event_name == 'release' && env.SIGNED == '1'
@@ -104,15 +119,20 @@ jobs:
           tag_name: ${{ github.event.release.tag_name }}
           files: |
             ${{ env.APK }}
+            ${{ env.BRIDGE }}
             update.json
+            update-io.github.tonyispht.signalopsirl.json
+            update-com.example.signalopsirl.json
           generate_release_notes: true
           append_body: true
           body: |
             ## Install
             1. Download **${{ env.APK }}** below on your Android phone (Android 8.0 or newer).
+               (The `old-app-bridge` APK is only for the in-app update of older versions; you don't need it.)
             2. Open it and allow installing from this source when Android asks.
             3. Launch Signal OPS IRL and accept the Terms of Responsible Use.
 
-            Already have 1.2.0 or newer? Update from inside the app: **Settings > App updates**.
+            Already have Signal OPS IRL? Update from inside the app: **Settings > App updates**. Coming from 1.2 or older,
+            the app then offers to move you to the new app with your progress.
 
             Please use Signal OPS IRL responsibly. Enjoying it? [Buy me a coffee](https://buymeacoffee.com/Tonyispht) ☕

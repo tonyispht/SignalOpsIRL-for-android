@@ -3,17 +3,44 @@ plugins {
     id("org.jetbrains.kotlin.android")
 }
 
+// Bump both for every release. The release tag must be "v" + versionName (the workflow checks this), and
+// F-Droid reads these two lines to find new versions.
+val appVersionCode = 130
+val appVersionName = "1.3.0"
+
+/** The app's original ID. Built only as the "bridge" that moves existing users to the new ID (-Plegacy). */
+val legacyId = "com.example.signalopsirl"
+val newId = "io.github.tonyispht.signalopsirl"
+val legacy = project.hasProperty("legacy")
+
 android {
-    namespace = "com.example.signalopsirl"
+    namespace = "io.github.tonyispht.signalopsirl"
     compileSdk = 34
 
     defaultConfig {
-        applicationId = "com.example.signalopsirl"
+        applicationId = if (legacy) legacyId else newId
         minSdk = 26
         targetSdk = 34
-        // CI passes these in; local builds fall back to 1 / "1.0-dev".
-        versionCode = System.getenv("VERSION_CODE")?.toIntOrNull() ?: 1
-        versionName = System.getenv("VERSION_NAME") ?: "1.0-dev"
+        versionCode = appVersionCode
+        versionName = appVersionName
+        // The bridge shows as "Signal OPS (old)" so the two icons can be told apart while moving.
+        manifestPlaceholders["appLabel"] = if (legacy) "Signal OPS (old)" else "@string/app_name"
+        buildConfigField("String", "LEGACY_ID", "\"$legacyId\"")
+        buildConfigField("String", "NEW_ID", "\"$newId\"")
+    }
+
+    // github: the APK published on GitHub releases, with in-app updates.
+    // fdroid: the build F-Droid makes from source; F-Droid delivers updates itself, so no self-updater.
+    flavorDimensions += "dist"
+    productFlavors {
+        create("github") {
+            dimension = "dist"
+            buildConfigField("boolean", "SELF_UPDATE", "true")
+        }
+        create("fdroid") {
+            dimension = "dist"
+            buildConfigField("boolean", "SELF_UPDATE", "false")
+        }
     }
 
     // Permanent release key. Supplied by CI from repository secrets; never commit the keystore.
@@ -40,7 +67,15 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
     }
     kotlinOptions { jvmTarget = "17" }
-    buildFeatures { compose = true }
+    // F-Droid: no Google-encrypted dependency metadata block in the APK.
+    dependenciesInfo {
+        includeInApk = false
+        includeInBundle = false
+    }
+    buildFeatures {
+        compose = true
+        buildConfig = true
+    }
     testOptions { unitTests.isReturnDefaultValues = true }
     composeOptions { kotlinCompilerExtensionVersion = "1.5.14" }
 }

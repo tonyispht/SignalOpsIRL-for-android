@@ -194,8 +194,27 @@ app asks GitHub for the latest release when it opens (at most every 6 hours) and
 which asks you to confirm. Your data and settings are kept. The first time, Android asks you to allow Signal OPS to
 install apps (**ALLOW INSTALLS**). Android only accepts an update signed with the same key as the installed app.
 
-Publishing: on GitHub open **Releases > Draft a new release**, create a new tag such as `v1.2.0` on `main`, and
-press **Publish**. The workflow builds the signed APK and attaches it with `update.json`.
+Publishing: first raise `appVersionCode` and `appVersionName` at the top of `app/build.gradle.kts` (for example 140 /
+"1.4.0") and merge that to `main`. Then on GitHub open **Releases > Draft a new release**, create the tag `v` +
+the version name (`v1.4.0`) on `main`, and press **Publish**. The workflow refuses a tag that doesn't match. It builds
+the signed APK, the old-app bridge APK and the `update*.json` files and attaches them. F-Droid picks up the same tag.
+
+## New app ID (1.3.0) and moving from the old app
+Up to 1.2.0 the app's ID was `com.example.signalopsirl`; from 1.3.0 it is `io.github.tonyispht.signalopsirl`, which
+F-Droid requires. Android treats a new ID as a different app, so:
+1. The old app's in-app updater installs the **bridge**: the same 1.3 app under the old ID, shown as
+   "Signal OPS (old)". It shows a **SIGNAL OPS IRL HAS MOVED** card.
+2. **STEP 1: INSTALL NEW APP** downloads and installs the new app (Android asks to confirm).
+3. **OPEN NEW APP & MOVE PROGRESS** opens it and copies XP, Dex, quests, settings, names and targets across. Both apps
+   check that the other is signed with the same key.
+4. The new app then offers **UNINSTALL OLD APP**.
+
+Someone who installs the new app directly while the old one is still there gets a **MOVE MY PROGRESS** card instead.
+
+## F-Droid
+The `fdroid` build flavor has no self-updater (F-Droid delivers updates and signs with its own key, so an F-Droid
+install and a GitHub install cannot update each other). The store listing lives in `fastlane/metadata/android/en-US/`
+and the F-Droid build recipe draft in `docs/fdroid/`.
 
 ## Bluetooth database (built in, offline)
 The app ships with a complete offline Bluetooth database in `app/src/main/assets/btdb/`, so identification works
