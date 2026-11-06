@@ -14,6 +14,8 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-latest
+    env:
+      SIGNING_KEY_ALIAS: signalopsirl
     steps:
       - uses: actions/checkout@v4
 
@@ -28,16 +30,48 @@ jobs:
         with:
           gradle-version: "8.7"
 
-      - name: Build APK
-        run: gradle --no-daemon assembleDebug
-
-      - name: Name the APK
+      - name: Work out the version
         run: |
-          VERSION="${GITHUB_REF_NAME}"
-          [[ "$GITHUB_REF_TYPE" == "tag" ]] || VERSION="build-${GITHUB_RUN_NUMBER}"
-          [[ "${{ github.event_name }}" == "release" ]] && VERSION="${{ github.event.release.tag_name }}"
-          cp app/build/outputs/apk/debug/app-debug.apk "SignalOpsIRL-${VERSION}.apk"
-          echo "APK=SignalOpsIRL-${VERSION}.apk" >> "$GITHUB_ENV"
+          TAG="${{ github.event.release.tag_name || github.ref_name }}"
+          if [[ "${{ github.event_name }}" == "release" || "$GITHUB_REF_TYPE" == "tag" ]]; then
+            echo "LABEL=$TAG" >> "$GITHUB_ENV"
+            echo "VERSION_NAME=${TAG#v}" >> "$GITHUB_ENV"
+          else
+            echo "LABEL=build-${GITHUB_RUN_NUMBER}" >> "$GITHUB_ENV"
+            echo "VERSION_NAME=dev-${GITHUB_RUN_NUMBER}" >> "$GITHUB_ENV"
+          fi
+          # Always increases, so every new APK installs over the previous one.
+          echo "VERSION_CODE=$((100 + GITHUB_RUN_NUMBER))" >> "$GITHUB_ENV"
+
+      - name: Restore the release signing key
+        env:
+          KEYSTORE_BASE64: ${{ secrets.SIGNING_KEYSTORE_BASE64 }}
+          STORE_PASSWORD: ${{ secrets.SIGNING_STORE_PASSWORD }}
+        run: |
+          if [[ -n "$KEYSTORE_BASE64" && -n "$STORE_PASSWORD" ]]; then
+            echo "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/release.jks"
+            echo "SIGNING_STORE_FILE=$RUNNER_TEMP/release.jks" >> "$GITHUB_ENV"
+            echo "SIGNING_STORE_PASSWORD=$STORE_PASSWORD" >> "$GITHUB_ENV"
+            echo "SIGNED=1" >> "$GITHUB_ENV"
+          else
+            echo "::warning::Signing secrets are not set, so this build uses a temporary debug key."
+            echo "SIGNED=0" >> "$GITHUB_ENV"
+          fi
+
+      - name: Build APK
+        run: |
+          if [[ "$SIGNED" == "1" ]]; then
+            gradle --no-daemon assembleRelease
+            cp app/build/outputs/apk/release/app-release.apk "SignalOpsIRL-${LABEL}.apk"
+          else
+            gradle --no-daemon assembleDebug
+            cp app/build/outputs/apk/debug/app-debug.apk "SignalOpsIRL-${LABEL}.apk"
+          fi
+          echo "APK=SignalOpsIRL-${LABEL}.apk" >> "$GITHUB_ENV"
+
+      - name: Remove the signing key
+        if: always()
+        run: rm -f "$RUNNER_TEMP/release.jks"
 
       - name: Upload build artifact
         uses: actions/upload-artifact@v4
@@ -52,6 +86,7 @@ jobs:
           tag_name: ${{ github.event.release.tag_name || github.ref_name }}
           files: ${{ env.APK }}
           generate_release_notes: true
+          append_body: true
           body: |
             ## Install
             1. Download **${{ env.APK }}** below on your Android phone (Android 8.0 or newer).

@@ -11,12 +11,29 @@ android {
         applicationId = "com.example.signalopsirl"
         minSdk = 26
         targetSdk = 34
-        versionCode = 1
-        versionName = "1.0"
+        // CI passes these in; local builds fall back to 1 / "1.0-dev".
+        versionCode = System.getenv("VERSION_CODE")?.toIntOrNull() ?: 1
+        versionName = System.getenv("VERSION_NAME") ?: "1.0-dev"
+    }
+
+    // Permanent release key. Supplied by CI from repository secrets; never commit the keystore.
+    val keystorePath = System.getenv("SIGNING_STORE_FILE")
+    signingConfigs {
+        if (keystorePath != null) {
+            create("release") {
+                storeFile = file(keystorePath)
+                storePassword = System.getenv("SIGNING_STORE_PASSWORD")
+                keyAlias = System.getenv("SIGNING_KEY_ALIAS")
+                keyPassword = System.getenv("SIGNING_STORE_PASSWORD")
+            }
+        }
     }
 
     buildTypes {
-        release { isMinifyEnabled = false }
+        release {
+            isMinifyEnabled = false
+            if (keystorePath != null) signingConfig = signingConfigs.getByName("release")
+        }
     }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
