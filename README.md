@@ -1,5 +1,7 @@
 # Signal OPS IRL
 
+![Signal OPS IRL](media/banner.png)
+
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 ![Platform: Android 8.0+](https://img.shields.io/badge/Android-8.0%2B-3DDC84?logo=android&logoColor=white)
 [![Buy Me a Coffee](https://img.shields.io/badge/Buy%20me%20a%20coffee-support-FFDD00?logo=buymeacoffee&logoColor=black)](https://buymeacoffee.com/Tonyispht)
@@ -12,6 +14,15 @@ It's also a practical way to learn how Bluetooth works and to check what your ow
 
 > **Please use it responsibly.** Signal OPS IRL is intended for recreational, educational and personal-security use only.
 > Every user must accept the [Terms of Responsible Use](#terms-of-responsible-use) before the app will scan.
+
+<p align="center">
+  <img src="media/feature-1-scan.png" width="24%" alt="See the invisible">
+  <img src="media/feature-2-identify.png" width="24%" alt="Know what's around you">
+  <img src="media/feature-3-protect.png" width="24%" alt="Spot trackers following you">
+  <img src="media/feature-4-level-up.png" width="24%" alt="Level up IRL">
+</p>
+
+▶️ **Watch the trailer:** [landscape](media/signal-ops-irl-promo.mp4) · [vertical](media/signal-ops-irl-promo-vertical.mp4)
 
 ---
 
