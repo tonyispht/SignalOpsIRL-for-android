@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- Targeting brackets -->
+    <path
+        android:strokeColor="#FF39FF88"
+        android:strokeWidth="3"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:pathData="M25,38V25H38M70,25H83V38M83,70V83H70M38,83H25V70" />
+    <!-- Signal pings radiating from the emitter, fading outward -->
+    <path
+        android:strokeColor="#FF00E5FF"
+        android:strokeWidth="3.4"
+        android:strokeLineCap="round"
+        android:pathData="M51.82,65.92A12,12 0 0 0 42.08,56.18" />
+    <path
+        android:strokeColor="#CC00E5FF"
+        android:strokeWidth="3.4"
+        android:strokeLineCap="round"
+        android:pathData="M61.67,64.18A22,22 0 0 0 43.82,46.33" />
+    <path
+        android:strokeColor="#8800E5FF"
+        android:strokeWidth="3.4"
+        android:strokeLineCap="round"
+        android:pathData="M71.51,62.44A32,32 0 0 0 45.56,36.49" />
+    <!-- Emitter -->
+    <path
+        android:fillColor="#FF00E5FF"
+        android:pathData="M40,68m-4.5,0a4.5,4.5 0 1,1 9,0a4.5,4.5 0 1,1 -9,0" />
+    <!-- Locked target blip -->
+    <path
+        android:strokeColor="#FFFF2D55"
+        android:strokeWidth="2"
+        android:pathData="M68,40m-6.5,0a6.5,6.5 0 1,1 13,0a6.5,6.5 0 1,1 -13,0" />
+    <path
+        android:fillColor="#FFFF2D55"
+        android:pathData="M68,40m-2.8,0a2.8,2.8 0 1,1 5.6,0a2.8,2.8 0 1,1 -5.6,0" />
+</vector>
