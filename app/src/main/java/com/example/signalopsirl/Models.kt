@@ -334,6 +334,15 @@ class Store(context: Context) {
         get() = prefs.getInt("termsVersion", 0)
         set(v) = prefs.edit().putInt("termsVersion", v).apply()
 
+    /** Check GitHub for a newer release when the app opens (at most every few hours). On by default. */
+    var autoUpdateCheckOn: Boolean
+        get() = prefs.getBoolean("autoUpdateCheck", true)
+        set(v) = prefs.edit().putBoolean("autoUpdateCheck", v).apply()
+
+    var lastUpdateCheck: Long
+        get() = prefs.getLong("lastUpdateCheck", 0L)
+        set(v) = prefs.edit().putLong("lastUpdateCheck", v).apply()
+
     /** Connect to unnamed devices in the background to read their GATT Device Name. Off by default. */
     var autoIdentifyOn: Boolean
         get() = prefs.getBoolean("autoIdentify", false)

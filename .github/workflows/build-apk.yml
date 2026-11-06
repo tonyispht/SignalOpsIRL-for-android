@@ -3,7 +3,8 @@ name: Build APK
 on:
   push:
     branches: [main]
-    tags: ["v*"]
+  # Publish a version from the Releases page (Draft a new release -> new tag vX.Y.Z -> Publish). Tag pushes alone
+  # are not built, so a release never gets two builds with different version codes.
   release:
     types: [published]
   workflow_dispatch:
@@ -78,6 +79,11 @@ jobs:
             cp app/build/outputs/apk/debug/app-debug.apk "SignalOpsIRL-${LABEL}.apk"
           fi
           echo "APK=SignalOpsIRL-${LABEL}.apk" >> "$GITHUB_ENV"
+          # update.json lets the app's in-app updater check the version and the download's integrity.
+          SHA=$(sha256sum "SignalOpsIRL-${LABEL}.apk" | cut -d' ' -f1)
+          printf '{"versionCode": %s, "versionName": "%s", "apk": "%s", "sha256": "%s", "signed": %s}\n' \
+            "$VERSION_CODE" "$VERSION_NAME" "SignalOpsIRL-${LABEL}.apk" "$SHA" "$([[ "$SIGNED" == "1" ]] && echo true || echo false)" > update.json
+          cat update.json
 
       - name: Remove the signing key
         if: always()
@@ -87,14 +93,18 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: SignalOpsIRL-apk
-          path: ${{ env.APK }}
+          path: |
+            ${{ env.APK }}
+            update.json
 
       - name: Publish GitHub Release
-        if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'release'
+        if: github.event_name == 'release' && env.SIGNED == '1'
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ github.event.release.tag_name || github.ref_name }}
-          files: ${{ env.APK }}
+          tag_name: ${{ github.event.release.tag_name }}
+          files: |
+            ${{ env.APK }}
+            update.json
           generate_release_notes: true
           append_body: true
           body: |
@@ -102,5 +112,7 @@ jobs:
             1. Download **${{ env.APK }}** below on your Android phone (Android 8.0 or newer).
             2. Open it and allow installing from this source when Android asks.
             3. Launch Signal OPS IRL and accept the Terms of Responsible Use.
+
+            Already have 1.2.0 or newer? Update from inside the app: **Settings > App updates**.
 
             Please use Signal OPS IRL responsibly. Enjoying it? [Buy me a coffee](https://buymeacoffee.com/Tonyispht) ☕

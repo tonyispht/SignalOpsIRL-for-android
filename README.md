@@ -89,7 +89,7 @@ To make an installable APK, use **Build > Build Bundle(s) / APK(s) > Build APK(s
 
 - **Everything stays on your phone.** The app has no accounts, no analytics and no ads, and it doesn't upload what it scans.
 - Location, when enabled, is kept in memory only and is never stored.
-- The only network request is the optional, user-triggered update of the public IEEE manufacturer list (a full copy is already built in).
+- Network requests: the update check against this repository's GitHub releases (on launch at most every 6 hours; can be turned off in **Settings > App updates**), downloading an update you choose to install, and the optional update of the public IEEE manufacturer list (a full copy is already built in).
 
 ## Terms of Responsible Use
 

@@ -55,6 +55,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.foundation.layout.height
@@ -416,6 +417,11 @@ fun App(store: Store) {
     var modeOpen by rememberSaveable { mutableStateOf(false) }
     var settingsOpen by rememberSaveable { mutableStateOf(false) }
     var vendorsOpen by rememberSaveable { mutableStateOf(false) }
+    var updatesOpen by rememberSaveable { mutableStateOf(false) }
+    var autoUpd by remember { mutableStateOf(store.autoUpdateCheckOn) }
+    var updDismissed by rememberSaveable { mutableStateOf(false) }
+    val upd by Updater.state.collectAsState()
+    LaunchedEffect(Unit) { withContext(Dispatchers.IO) { Updater.autoCheck(ctx.applicationContext, store) } }
 
     LaunchedEffect(Unit) { withContext(Dispatchers.IO) { Vendors.load(ctx.applicationContext) } }
     LaunchedEffect(Unit) {
@@ -769,6 +775,21 @@ fun App(store: Store) {
                         dexNew = dex.newCount,
                         onDex = { dexOpen = true }
                     )
+                }
+
+                // Update available (from the automatic or manual check)
+                if (!updDismissed && upd.release != null && upd.phase != UpdatePhase.IDLE &&
+                    upd.phase != UpdatePhase.UP_TO_DATE && upd.phase != UpdatePhase.CHECKING
+                ) {
+                    item {
+                        HudCard(border = cs.tertiary) {
+                            Column(Modifier.padding(10.dp).fillMaxWidth()) {
+                                Text("UPDATE AVAILABLE \u00B7 v${upd.release!!.versionName}", fontSize = 12.sp,
+                                    color = cs.tertiary, letterSpacing = 1.sp)
+                                UpdateControls(upd, onLater = { updDismissed = true; Updater.dismiss() })
+                            }
+                        }
+                    }
                 }
 
                 // Alert banner
@@ -1824,6 +1845,33 @@ fun App(store: Store) {
                             }
                         }
                         SectionHeader(
+                            "App updates", updatesOpen, { updatesOpen = !updatesOpen },
+                            summary = "v" + remember { Updater.installedName(ctx) } +
+                                if (upd.phase == UpdatePhase.AVAILABLE) " \u00B7 NEW v${upd.release?.versionName}" else ""
+                        )
+                        if (updatesOpen) {
+                            Column(
+                                Modifier.padding(start = 10.dp, end = 10.dp, bottom = 10.dp),
+                                verticalArrangement = Arrangement.spacedBy(4.dp)
+                            ) {
+                                Text(
+                                    "UPDATES COME FROM THE OFFICIAL GITHUB RELEASES. THE APP DOWNLOADS THE NEW VERSION, " +
+                                        "CHECKS IT, AND ANDROID ASKS YOU TO CONFIRM. YOUR DATA AND SETTINGS ARE KEPT.",
+                                    fontSize = 9.sp, color = cs.onSurfaceVariant
+                                )
+                            }
+                            SettingToggle(
+                                "CHECK FOR UPDATES AUTOMATICALLY", autoUpd,
+                                "WHEN THE APP OPENS, AT MOST EVERY 6 HOURS. ONLY CONTACTS GITHUB."
+                            ) {
+                                autoUpd = !autoUpd
+                                store.autoUpdateCheckOn = autoUpd
+                            }
+                            Column(Modifier.padding(start = 10.dp, end = 10.dp, bottom = 10.dp)) {
+                                UpdateControls(upd, showCheck = true)
+                            }
+                        }
+                        SectionHeader(
                             "Bluetooth DB", vendorsOpen, { vendorsOpen = !vendorsOpen },
                             summary = if (vendorCount > 0) "BUILT-IN \u00B7 %,d OUI".format(vendorCount) else "LOADING..."
                         )
@@ -2633,6 +2681,65 @@ fun SignalBars(rssi: Int, color: Color, modifier: Modifier = Modifier, heat: Boo
             } else {
                 drawRoundRect(empty, Offset(x, top), Size(bw, h), corner, style = Stroke(1.dp.toPx()))
             }
+        }
+    }
+}
+
+
+/** Status line and buttons for in-app updates (Settings > App updates and the main-screen banner). */
+@Composable
+fun UpdateControls(upd: UpdateState, showCheck: Boolean = false, onLater: (() -> Unit)? = null) {
+    val cs = MaterialTheme.colorScheme
+    val ctx = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val app = ctx.applicationContext
+    upd.message?.let {
+        Text(it, fontSize = 10.sp, color = if (upd.phase == UpdatePhase.ERROR) cs.error else cs.secondary)
+    }
+    if (upd.phase == UpdatePhase.DOWNLOADING) {
+        if (upd.progress >= 0f) {
+            LinearProgressIndicator(progress = { upd.progress }, modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp))
+            Text("${(upd.progress * 100).toInt()}%", fontSize = 9.sp, fontFamily = Mono, color = cs.onSurfaceVariant)
+        } else {
+            LinearProgressIndicator(modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp))
+        }
+    }
+    val rel = upd.release
+    if (rel != null && (upd.phase == UpdatePhase.AVAILABLE || upd.phase == UpdatePhase.NEEDS_PERMISSION ||
+            (upd.phase == UpdatePhase.ERROR && rel.apkUrl.isNotEmpty()))
+    ) {
+        Text(
+            "INSTALLED v${remember { Updater.installedName(ctx) }} \u2192 NEW v${rel.versionName}" +
+                (if (rel.apkSize > 0) " \u00B7 %.1f MB".format(rel.apkSize / 1_048_576.0) else ""),
+            fontSize = 9.sp, fontFamily = Mono, color = cs.onSurfaceVariant
+        )
+        if (rel.notes.isNotEmpty()) {
+            Text(
+                rel.notes.lines().filter { it.isNotBlank() && !it.startsWith("## Install") }.take(6).joinToString("\n")
+                    .replace("**", ""),
+                fontSize = 9.sp, lineHeight = 11.sp, color = cs.onSurfaceVariant,
+                modifier = Modifier.padding(vertical = 2.dp)
+            )
+        }
+    }
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+        when (upd.phase) {
+            UpdatePhase.CHECKING -> Text("CHECKING...", fontSize = 11.sp, color = cs.tertiary, modifier = Modifier.padding(8.dp))
+            UpdatePhase.DOWNLOADING, UpdatePhase.INSTALLING -> {}
+            UpdatePhase.NEEDS_PERMISSION -> {
+                MiniButton("ALLOW INSTALLS", cs.tertiary) { runCatching { ctx.startActivity(Updater.permissionIntent(ctx)) } }
+                MiniButton("UPDATE") { scope.launch(Dispatchers.IO) { Updater.downloadAndInstall(app) } }
+            }
+            UpdatePhase.AVAILABLE -> {
+                onLater?.let { MiniButton("LATER", cs.onSurfaceVariant) { it() } }
+                MiniButton("UPDATE NOW", cs.tertiary) { scope.launch(Dispatchers.IO) { Updater.downloadAndInstall(app) } }
+            }
+            UpdatePhase.ERROR -> {
+                onLater?.let { MiniButton("LATER", cs.onSurfaceVariant) { it() } }
+                if (rel != null && rel.apkUrl.isNotEmpty()) MiniButton("RETRY") { scope.launch(Dispatchers.IO) { Updater.downloadAndInstall(app) } }
+                if (showCheck) MiniButton("CHECK NOW") { scope.launch(Dispatchers.IO) { Updater.check(app) } }
+            }
+            else -> if (showCheck) MiniButton("CHECK NOW") { scope.launch(Dispatchers.IO) { Updater.check(app) } }
         }
     }
 }
