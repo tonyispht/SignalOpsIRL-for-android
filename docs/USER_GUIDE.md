@@ -187,26 +187,41 @@ signal strengthens (ticks keep playing with the screen off while the scan runs).
 while a device is being tracked. Choose STOP LOCATING in the chooser, or press STOP on the tracker card, to end. Devices that rotate their random
 address will drop out and need to be tapped again.
 
-## Vendor database (MAC -> manufacturer)
-Open **Settings > Vendor DB** and press **DOWNLOAD** once (needs internet). It fetches the IEEE MA-L, MA-M and MA-S
-registries (about 47,000 assignments) and stores them on the phone, so lookups work offline afterward.
-You can also **IMPORT FILE** with an IEEE `oui.csv` / `mam.csv` / `oui36.csv` or a Wireshark `manuf` file.
-To ship it inside the APK instead, drop `oui.csv` into `app/src/main/assets/`.
+## Bluetooth database (built in, offline)
+The app ships with a complete offline Bluetooth database in `app/src/main/assets/btdb/`, so identification works
+from the first launch with no download and no internet:
 
-Addresses with the locally-administered bit set are labeled RANDOM, and many BLE devices (phones, watches,
-trackers) use random addresses, so they will not resolve to a manufacturer.
+| File | What it holds | Used for |
+|---|---|---|
+| `companies.tsv` | every Bluetooth SIG company identifier (about 4,000) | naming the maker from manufacturer data |
+| `uuid16.tsv` | every 16-bit service UUID: SIG services, company (member) UUIDs, standards-body UUIDs | naming services, identifying by service owner |
+| `appearance.tsv` | GAP appearance values (watch, keyboard, hearing aid, tag...) | the device type a device says it is |
+| `oui.tsv` | the IEEE MAC prefix registry (MA-L, MA-M, MA-S; about 54,000) | the maker of devices with a public address |
+
+**Settings > Bluetooth DB** shows the counts and the date of the lists. It is Bluetooth only (no Wi-Fi tables).
+**UPDATE ONLINE** (optional) fetches newer IEEE prefixes on top, **IMPORT FILE** accepts an IEEE `oui.csv` /
+`mam.csv` / `oui36.csv` or a Wireshark `manuf` file, and **REMOVE UPDATES** goes back to the built-in list.
+
+To refresh the built-in lists before a release, run `python3 tools/build_bt_db.py` and rebuild.
+
+Addresses with the locally-administered bit set are labeled RANDOM. Many BLE devices (phones, watches, trackers)
+use random addresses, so they will not resolve by MAC prefix; they are identified from their company ID, service
+UUIDs (including service-data UUIDs), appearance and payload instead.
 
 ## Device identification (scanner_config.json)
 `app/src/main/assets/scanner_config.json` is the same device database the desktop scanner script uses. Each
 signal in **Signals** gets a tag line showing what it was identified as (category, evidence, and ALERT / POSSIBLE
 tier). Evidence is checked in this order: direct alert/possible names, alert/possible MAC prefixes, category
-name terms (whole-word, in file order), name regexes, GATT service rules, a few built-in rules (iBeacon, Find My,
-Tile, Ruuvi, Eddystone), weak MAC-prefix hints, vendor name rules, then just the company name from the SIG ID.
+name terms (whole-word, in file order), name regexes, GATT service rules (advertised UUID lists and service-data UUIDs),
+built-in payload rules (iBeacon, Apple continuity types, Google Find Hub trackers, Microsoft Swift Pair and
+Connected Devices, Tile, Ruuvi, Eddystone), the advertised appearance or classic device class (`appearance_categories`),
+weak MAC-prefix hints, vendor name rules, then just the maker: SIG company name, owner of a company service UUID,
+or the IEEE owner of a public MAC address.
 To update it, replace the file with a newer export of the config and rebuild. In **Settings**, the AUTO chips
 make ALERT-tier and POSSIBLE-tier identifications fire the normal alert (both off by default).
 
 Unnamed devices that rotate their MAC (Apple Find My, bare company IDs, generic services) are grouped into one row with a count (×N).
-Scan mode, Target list and Vendor DB now live inside the **Settings** card. Signals show one line per device (name only);
+Scan mode, Target list and Bluetooth DB now live inside the **Settings** card. Signals show one line per device (name only);
 tap a row to track it and see its MAC address and identification in the tracker card.
 
 ## Choosing the scanning adapter (external USB Bluetooth)

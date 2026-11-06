@@ -319,6 +319,8 @@ fun App(store: Store) {
     val vendorCount by Vendors.count.collectAsState()
     val vendorStatus by Vendors.status.collectAsState()
     val vendorBusy by Vendors.busy.collectAsState()
+    val vendorBundled by Vendors.bundled.collectAsState()
+    val vendorExtra by Vendors.extra.collectAsState()
     val scope = rememberCoroutineScope()
 
     val watch = remember { mutableStateListOf<String>().also { it.addAll(store.loadWatchlist()) } }
@@ -1822,8 +1824,8 @@ fun App(store: Store) {
                             }
                         }
                         SectionHeader(
-                            "Vendor DB", vendorsOpen, { vendorsOpen = !vendorsOpen },
-                            summary = if (vendorCount > 0) "%,d OUI".format(vendorCount) else "EMPTY"
+                            "Bluetooth DB", vendorsOpen, { vendorsOpen = !vendorsOpen },
+                            summary = if (vendorCount > 0) "BUILT-IN \u00B7 %,d OUI".format(vendorCount) else "LOADING..."
                         )
                         if (vendorsOpen) {
                             Column(
@@ -1831,12 +1833,25 @@ fun App(store: Store) {
                                 verticalArrangement = Arrangement.spacedBy(4.dp)
                             ) {
                                 Text(
-                                    "MAC PREFIX -> MANUFACTURER (IEEE REGISTRY). DOWNLOAD ONCE, THEN IT WORKS OFFLINE. " +
-                                        "ALSO ACCEPTS AN IEEE oui.csv OR WIRESHARK manuf FILE.",
-                                    fontSize = 9.sp, color = cs.onSurfaceVariant
+                                    "PRE-INSTALLED AND FULLY OFFLINE. NOTHING TO DOWNLOAD.",
+                                    fontSize = 10.sp, color = cs.primary
                                 )
                                 Text(
-                                    "RANDOMIZED ADDRESSES (MOST PHONES, WATCHES, TRACKERS) HAVE NO MANUFACTURER ENTRY.",
+                                    "BLUETOOTH SIG COMPANIES %,d \u00B7 SERVICE UUIDS %,d \u00B7 DEVICE TYPES %,d".format(
+                                        BtDb.companyCount, BtDb.uuidCount, BtDb.appearanceCount
+                                    ),
+                                    fontSize = 9.sp, fontFamily = Mono, color = cs.onSurfaceVariant
+                                )
+                                Text(
+                                    "MAC PREFIXES (IEEE) %,d BUILT-IN".format(vendorBundled) +
+                                        (if (vendorExtra > 0) " + %,d FROM UPDATES".format(vendorExtra) else "") +
+                                        (BtDb.built?.let { " \u00B7 LIST DATE $it" } ?: ""),
+                                    fontSize = 9.sp, fontFamily = Mono, color = cs.onSurfaceVariant
+                                )
+                                Text(
+                                    "RANDOMIZED ADDRESSES (MOST PHONES, WATCHES, TRACKERS) HAVE NO MAC ENTRY; THOSE ARE " +
+                                        "IDENTIFIED FROM THEIR COMPANY ID, SERVICE UUIDS AND DEVICE TYPE INSTEAD. " +
+                                        "OPTIONAL: UPDATE ONLINE OR IMPORT AN IEEE oui.csv / WIRESHARK manuf FILE FOR NEWER PREFIXES.",
                                     fontSize = 9.sp, color = cs.onSurfaceVariant
                                 )
                                 vendorStatus?.let { Text(it, fontSize = 10.sp, color = cs.secondary) }
@@ -1845,7 +1860,7 @@ fun App(store: Store) {
                                         Text("WORKING...", fontSize = 11.sp, color = cs.tertiary,
                                             modifier = Modifier.padding(8.dp))
                                     } else {
-                                        MiniButton("DOWNLOAD") {
+                                        MiniButton("UPDATE ONLINE") {
                                             scope.launch(Dispatchers.IO) {
                                                 Vendors.busy.value = true
                                                 Vendors.status.value = "CONNECTING..."
@@ -1854,7 +1869,7 @@ fun App(store: Store) {
                                             }
                                         }
                                         MiniButton("IMPORT FILE") { vendorImportLauncher.launch(arrayOf("*/*")) }
-                                        MiniButton("CLEAR", cs.error) {
+                                        if (vendorExtra > 0) MiniButton("REMOVE UPDATES", cs.error) {
                                             scope.launch(Dispatchers.IO) { Vendors.clear(ctx.applicationContext) }
                                         }
                                     }

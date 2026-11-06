@@ -41,7 +41,9 @@ data class SeenDevice(
     /** Apple only: model read from the adverts (AirPods Pro, Apple Watch...), null = not told. */
     val appleModel: String? = null,
     /** Apple only: what the device says it is doing (idle, screen on...), null = not told. */
-    val appleState: String? = null
+    val appleState: String? = null,
+    /** Payload clues collected across packets (APPEAR:03C1, SWIFTPAIR, MSCDP:09, FMDN...), see [AdDecoder.hints]. */
+    val hints: Set<String> = emptySet()
 )
 
 /** Live hot/cold tracking state for one device. trend: 1 = getting closer, -1 = moving away. */

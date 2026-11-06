@@ -84,7 +84,7 @@ object GattProbe {
         return if (u.startsWith("0000") && u.endsWith(BASE_SUFFIX)) u.substring(4, 8).uppercase() else null
     }
 
-    fun serviceName(uuid: String): String? = key16(uuid)?.let { SERVICE_NAMES[it] }
+    fun serviceName(uuid: String): String? = key16(uuid)?.let { SERVICE_NAMES[it] ?: BtDb.serviceName(it) }
 
     fun charName(uuid: String): String? = key16(uuid)?.let { CHAR_NAMES[it] }
 

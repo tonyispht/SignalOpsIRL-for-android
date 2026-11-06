@@ -48,8 +48,17 @@ class Evidence(
     /** Apple continuity message types seen (0x0215 = iBeacon). */
     val appleTypes: Set<Int> = emptySet(),
     /** Owner of the MAC prefix from the IEEE database (null for random addresses). */
-    val vendor: String? = null
-)
+    val vendor: String? = null,
+    /** Payload clues from [AdDecoder.hints]: APPEAR:03C1, SWIFTPAIR, MSCDP:09, FMDN, FASTPAIR:xxxxxx. */
+    val hints: Set<String> = emptySet(),
+    /** Classic Bluetooth class of device, -1 = none. */
+    val cod: Int = -1
+) {
+    /** GAP appearance value the device advertised, -1 = none. */
+    val appearance: Int by lazy {
+        hints.firstOrNull { it.startsWith("APPEAR:") }?.substring(7)?.toIntOrNull(16) ?: -1
+    }
+}
 
 object Classifier {
     @Volatile private var db: Db? = null
@@ -76,11 +85,11 @@ object Classifier {
     /** Company ID of the hardware maker found in Flock battery and camera modules (used for the screen-off filters). */
     const val XUNTONG_ID = 0x09C8
 
-    /** Bluetooth SIG company name for a manufacturer-data ID, if the loaded config knows it. */
-    fun companyName(id: Int): String? = db?.companyName(id)
+    /** Company name for a manufacturer-data ID: the config's short name, else the full Bluetooth SIG list. */
+    fun companyName(id: Int): String? = db?.companyName(id) ?: BtDb.company(id)
 
     /** Company IDs whose name contains [q] (case-insensitive), e.g. "espressif" -> 0x02E5. */
-    fun companyIdsNamed(q: String): Set<Int> = db?.companyIdsNamed(q) ?: emptySet()
+    fun companyIdsNamed(q: String): Set<Int> = (db?.companyIdsNamed(q) ?: emptySet()) + BtDb.companyIdsNamed(q)
 
     /** Every category of the loaded config (plus the built-in ones), sorted by title. Empty until a config is loaded. */
     fun categories(): List<CategoryInfo> = db?.categoryList() ?: emptyList()
@@ -230,6 +239,7 @@ private class Db(root: JSONObject) {
     private val serviceRules = ArrayList<ServiceRule>()
     private val vendorRules = ArrayList<Rule>()
     private val customNames = HashMap<String, String>()
+    private val appearanceCats = HashMap<Int, String>()
     private val ignoreAddr = HashSet<String>()
     private val ignoreName = HashSet<String>()
     val summary: String
@@ -274,6 +284,10 @@ private class Db(root: JSONObject) {
         eachKey(root.optJSONObject("vendor_categories")) { k, v ->
             val c = cat(k)
             strings(v as? JSONArray).map { NameMatcher(it) }.filter { it.valid }.forEach { vendorRules.add(Rule(c, it)) }
+        }
+
+        eachKey(root.optJSONObject("appearance_categories")) { k, v ->
+            k.removePrefix("0x").removePrefix("0X").toIntOrNull(16)?.let { appearanceCats[it] = v.toString() }
         }
 
         eachKey(root.optJSONObject("custom_names")) { k, v -> customNames[macKey(k)] = v.toString() }
@@ -332,8 +346,11 @@ private class Db(root: JSONObject) {
             }
         }
 
-        // 6. a few built-in rules (Apple continuity, Tile, Ruuvi, Eddystone)
+        // 6. a few built-in rules (Apple continuity, Microsoft, Google Find Hub, Tile, Ruuvi, Eddystone)
         builtin(e)?.let { return it }
+
+        // 6b. what the device itself says it is: GAP appearance, then classic class of device
+        byKind(e)?.let { return it }
 
         // 7. weak MAC prefix hints (Raspberry Pi, Espressif)
         if (conf != null && conf.startsWith("info:")) {
@@ -343,7 +360,7 @@ private class Db(root: JSONObject) {
         // 8. vendor name -> category (IEEE owner, then SIG company names)
         val vendors = ArrayList<Pair<String, String>>(3)   // (display, normalized)
         e.vendor?.let { vendors.add(it to normName(it)) }
-        e.companyIds.forEach { id -> companyNames[id]?.let { vendors.add(it to normName(it)) } }
+        e.companyIds.forEach { id -> coName(id)?.let { vendors.add(it to normName(it)) } }
         if (vendors.isNotEmpty()) {
             for (r in vendorRules) {
                 val v = vendors.firstOrNull { r.m.matches(it.second) } ?: continue
@@ -351,11 +368,62 @@ private class Db(root: JSONObject) {
             }
         }
 
-        // 9. nothing categorised it; at least say who made it
-        e.companyIds.firstNotNullOfOrNull { id -> companyNames[id]?.let { id to it } }?.let { (id, n) ->
+        // 9. nothing categorised it; at least say who made it (SIG company, then the owner of a company
+        //    service UUID, then the IEEE owner of a public MAC address)
+        e.companyIds.firstNotNullOfOrNull { id -> coName(id)?.let { id to it } }?.let { (id, n) ->
             return Classification(null, "", "", Tier.INFO, n, "company ${hex4(id)}", anon = true)
         }
+        for (u in e.services) {
+            val s16 = BtDb.short16(u)
+            val info = if (s16 >= 0) BtDb.uuid16(s16) else null
+            if (info != null && info.member) {
+                return Classification(null, "", "", Tier.INFO, info.name, "service ${hex4(s16)}", anon = true)
+            }
+        }
+        e.vendor?.let { v ->
+            return Classification(null, "", "", Tier.INFO, v, "OUI $ouiText")
+        }
         return null
+    }
+
+    /**
+     * Category from the advertised GAP appearance, else from the classic class of device. These are self-reported
+     * device kinds, so they never raise more than INFO on their own.
+     */
+    private fun byKind(e: Evidence): Classification? {
+        val ap = e.appearance
+        if (ap > 0) {
+            val key = appearanceCats[ap shr 6]
+            if (key != null) {
+                return make(cat(key), Tier.INFO, BtDb.appearanceName(ap), "appearance 0x%04X".format(ap), anon = true)
+            }
+        }
+        if (e.cod >= 0) {
+            val key = codCategory(e.cod) ?: return null
+            return make(cat(key), Tier.INFO, ClassicBt.text(e.cod), "device class")
+        }
+        return null
+    }
+
+    private fun codCategory(cod: Int): String? {
+        val minor = (cod shr 2) and 0x3F
+        return when ((cod shr 8) and 0x1F) {
+            1 -> "laptops_tablets"
+            2 -> "smartphones"
+            3 -> "networking_mesh"
+            4 -> when (minor) {
+                8 -> "auto_aerial"
+                9, 10, 14, 15 -> "home_entertainment_av"
+                18 -> "handhelds_gaming"
+                else -> "audio_wearables"
+            }
+            5 -> if ((minor and 0x0F) == 1 || (minor and 0x0F) == 2) "handhelds_gaming" else "computer_peripherals"
+            6 -> "computer_peripherals"
+            7 -> if (minor == 5) "smart_glasses_ai_wearables" else "wearables_audio"
+            8 -> "toys_robots_stem"
+            9 -> "medical_health"
+            else -> null
+        }
     }
 
     // ---- law-enforcement evidence fusion --------------------------------------------------------
@@ -404,6 +472,13 @@ private class Db(root: JSONObject) {
             parts.add(Part("company", WEAK_COMPANY, "company 0x09C8", companyNames[XUNTONG] ?: "XUNTONG"))
         }
 
+        // Company service UUIDs registered with the Bluetooth SIG: Axon's is used by its own gear only;
+        // Motorola Solutions' also appears on commercial radios, so it is weak on its own.
+        if (has16(e, AXON_SVC)) parts.add(Part("svcowner", 60, "Axon service FC81", "Axon device"))
+        else MOTOROLA_SOLUTIONS_SVC.firstOrNull { has16(e, it) }?.let {
+            parts.add(Part("svcowner", WEAK_COMPANY, "service ${hex4(it)}", "Motorola Solutions device"))
+        }
+
         // Flock Raven gunshot detectors advertise a set of custom 0x3x00 services (from public research, not verified on every unit).
         val raven = RAVEN_SERVICES.count { (it + ServiceRule.BASE_SUFFIX) in e.services }
         if (raven >= 3) parts.add(Part("service", 60, "$raven Raven services", "Flock Raven (probable)"))
@@ -431,6 +506,25 @@ private class Db(root: JSONObject) {
                 0x0215 in e.appleTypes -> return make(cat("proximity_beacons"), Tier.INFO, "iBeacon", "Apple type 02")
                 0x12 in e.appleTypes -> return make(cat("trackers_valuables"), Tier.INFO, "Apple Find My accessory", "Apple type 12", anon = true)
                 0x07 in e.appleTypes -> return make(cat("wearables_audio"), Tier.INFO, "Apple/Beats earbuds", "Apple type 07", anon = true)
+                0x06 in e.appleTypes -> return make(cat("smart_iot"), Tier.INFO, "HomeKit accessory", "Apple type 06", anon = true)
+                0x0B in e.appleTypes -> return make(cat("wearables_audio"), Tier.INFO, "Apple Watch", "Apple type 0B", anon = true)
+                0x09 in e.appleTypes && 0x10 !in e.appleTypes ->
+                    return make(cat("home_entertainment_av"), Tier.INFO, "AirPlay receiver (Apple TV / HomePod / speaker)", "Apple type 09", anon = true)
+                e.appleTypes.any { it == 0x10 || it == 0x0C || it == 0x0F || it == 0x0D || it == 0x0E } ->
+                    return make(cat("smartphones"), Tier.INFO, "Apple device (iPhone / iPad / Mac / Watch)", "Apple continuity", anon = true)
+            }
+        }
+        if ("FMDN" in e.hints) {
+            return make(cat("trackers_valuables"), Tier.INFO, "Google Find Hub tracker", "Find Hub frame (FEAA)", anon = true)
+        }
+        if (MICROSOFT in e.companyIds) {
+            if ("SWIFTPAIR" in e.hints) {
+                return make(cat("computer_peripherals"), Tier.INFO, "Swift Pair accessory (pairing mode)", "Microsoft Swift Pair", anon = true)
+            }
+            e.hints.firstOrNull { it.startsWith("MSCDP:") }?.substring(6)?.toIntOrNull(16)?.let { t ->
+                AdDecoder.MS_CDP[t]?.let { (label, key) ->
+                    return make(cat(key), Tier.INFO, label, "Microsoft CDP type $t", anon = true)
+                }
             }
         }
         if (TILE in e.companyIds) return make(cat("trackers_valuables"), Tier.INFO, "Tile tracker", "company 0x067C")
@@ -444,6 +538,11 @@ private class Db(root: JSONObject) {
     // ---- helpers -------------------------------------------------------------------------------
 
     fun companyName(id: Int): String? = companyNames[id]
+
+    /** Config short name first (e.g. "Apple"), then the full SIG name. */
+    private fun coName(id: Int): String? = companyNames[id] ?: BtDb.company(id)
+
+    private fun has16(e: Evidence, u: Int) = ("0000%04X".format(u) + ServiceRule.BASE_SUFFIX) in e.services
 
     fun companyIdsNamed(q: String): Set<Int> =
         companyNames.filterValues { it.contains(q, ignoreCase = true) }.keys
@@ -496,6 +595,9 @@ private class Db(root: JSONObject) {
         const val XUNTONG = 0x09C8
         const val TILE = 0x067C
         const val RUUVI = 0x0499
+        const val MICROSOFT = 0x0006
+        const val AXON_SVC = 0xFC81
+        val MOTOROLA_SOLUTIONS_SVC = listOf(0xFE04, 0xFD8E)
 
         // evidence weights for law-enforcement fusion
         const val STRONG = 100
