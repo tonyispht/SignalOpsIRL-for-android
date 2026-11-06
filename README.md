@@ -45,6 +45,10 @@ It's also a practical way to learn how Bluetooth works and to check what your ow
 - **The Signal Dex**, a device collection to fill as you identify new types.
 - **Movie FX:** boot sequence, CRT power on/off, scanlines, data rain, an oscilloscope and full-screen celebrations (all optional).
 
+### Optional target lists
+Ready-made lists you can import for home security sweeps and auditing: **hacking gadgets and card skimmers**, **item
+trackers**, and **law-enforcement devices**. See **[target-lists](target-lists/)**.
+
 Full documentation for every feature and setting is in the **[User Guide](docs/USER_GUIDE.md)**.
 
 ---

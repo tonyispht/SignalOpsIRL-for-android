@@ -1,0 +1,15 @@
+# Signal OPS IRL target list: item trackers
+# For checking your own car, bags and belongings for trackers you didn't put there.
+# Pair this list with Settings > SECURITY > TRACKER-FOLLOW DETECTION, which warns when a tracker keeps moving with you.
+# Import: Settings > Target list > IMPORT. Lines starting with # are ignored; duplicates are skipped.
+# Your own trackers will match too: use MARK AS MINE on them.
+
+AirTag
+SmartTag
+Tile
+Chipolo
+Pebblebee
+Find My
+Openhaystack
+Tracker
+Lojack

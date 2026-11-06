@@ -1,0 +1,43 @@
+# Signal OPS IRL target list: security sweep (hacking tools and card skimmers)
+# For checking your own home, car, workplace or event space, and for auditing your own equipment.
+# Import: Settings > Target list > IMPORT. Lines starting with # are ignored; duplicates are skipped.
+# A match is a lead, not proof. Many of these names and chips are also used in ordinary hobby projects,
+# so check what you find before drawing conclusions. If you find a skimmer, don't touch it: report it to
+# the business and local police.
+
+# Multi-tool hacking gadgets
+Flipper
+Flipper Zero
+Chameleon
+Proxmark
+HackRF
+Portapack
+Ubertooth
+
+# ESP32 attack firmware and BLE spam
+Marauder
+GhostESP
+5Ghost
+Bruce
+Wardriver
+pwn
+BLE Spam
+
+# Card skimmers: often built from cheap serial Bluetooth modules left on their default names
+Skimmer
+HC-05
+HC-06
+linvor
+RNBT
+HM-10
+CC2540
+CC2541
+
+# Generic ESP32 boards, a common base for DIY attack tools (very common in hobby gear too)
+ESP32
+24:0A:C4
+30:AE:A4
+84:F3:EB
+CC:50:E3
+C4:4F:33
+34:98:7A
