@@ -20,8 +20,6 @@ Builds:
     subdir: app
     gradle:
       - fdroid
-    scandelete:
-      - signing
 
 AutoUpdateMode: Version
 UpdateCheckMode: Tags
