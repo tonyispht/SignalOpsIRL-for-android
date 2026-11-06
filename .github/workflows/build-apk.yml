@@ -49,9 +49,19 @@ jobs:
           STORE_PASSWORD: ${{ secrets.SIGNING_STORE_PASSWORD }}
         run: |
           if [[ -n "$KEYSTORE_BASE64" && -n "$STORE_PASSWORD" ]]; then
-            echo "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/release.jks"
+            # Pasting on a phone can add spaces or line breaks; neither belongs in these values.
+            PW="$(printf '%s' "$STORE_PASSWORD" | tr -d '[:space:]')"
+            printf '%s' "$KEYSTORE_BASE64" | tr -d '[:space:]' | base64 -d > "$RUNNER_TEMP/release.jks"
+            echo "::add-mask::$PW"
+            echo "Keystore size: $(wc -c < "$RUNNER_TEMP/release.jks") bytes (expected 4324)"
+            if ! keytool -list -keystore "$RUNNER_TEMP/release.jks" -storetype PKCS12 -storepass "$PW" -alias "$SIGNING_KEY_ALIAS" > "$RUNNER_TEMP/kt.txt" 2>&1; then
+              sed 's/^/keytool: /' "$RUNNER_TEMP/kt.txt"
+              echo "::error::The signing secrets don't match. Check SIGNING_STORE_PASSWORD and SIGNING_KEYSTORE_BASE64."
+              exit 1
+            fi
+            grep -i "SHA-256\|SHA256" "$RUNNER_TEMP/kt.txt" || true
             echo "SIGNING_STORE_FILE=$RUNNER_TEMP/release.jks" >> "$GITHUB_ENV"
-            echo "SIGNING_STORE_PASSWORD=$STORE_PASSWORD" >> "$GITHUB_ENV"
+            echo "SIGNING_STORE_PASSWORD=$PW" >> "$GITHUB_ENV"
             echo "SIGNED=1" >> "$GITHUB_ENV"
           else
             echo "::warning::Signing secrets are not set, so this build uses a temporary debug key."
@@ -71,7 +81,7 @@ jobs:
 
       - name: Remove the signing key
         if: always()
-        run: rm -f "$RUNNER_TEMP/release.jks"
+        run: rm -f "$RUNNER_TEMP/release.jks" "$RUNNER_TEMP/kt.txt"
 
       - name: Upload build artifact
         uses: actions/upload-artifact@v4
