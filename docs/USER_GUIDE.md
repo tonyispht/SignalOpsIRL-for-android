@@ -187,6 +187,16 @@ signal strengthens (ticks keep playing with the screen off while the scan runs).
 while a device is being tracked. Choose STOP LOCATING in the chooser, or press STOP on the tracker card, to end. Devices that rotate their random
 address will drop out and need to be tapped again.
 
+## App updates
+**Settings > App updates** shows the installed version. With **CHECK FOR UPDATES AUTOMATICALLY** on (default), the
+app asks GitHub for the latest release when it opens (at most every 6 hours) and shows an **UPDATE AVAILABLE** card.
+**UPDATE NOW** downloads the APK, checks its SHA-256 against the release's `update.json`, and hands it to Android,
+which asks you to confirm. Your data and settings are kept. The first time, Android asks you to allow Signal OPS to
+install apps (**ALLOW INSTALLS**). Android only accepts an update signed with the same key as the installed app.
+
+Publishing: on GitHub open **Releases > Draft a new release**, create a new tag such as `v1.2.0` on `main`, and
+press **Publish**. The workflow builds the signed APK and attaches it with `update.json`.
+
 ## Bluetooth database (built in, offline)
 The app ships with a complete offline Bluetooth database in `app/src/main/assets/btdb/`, so identification works
 from the first launch with no download and no internet:
