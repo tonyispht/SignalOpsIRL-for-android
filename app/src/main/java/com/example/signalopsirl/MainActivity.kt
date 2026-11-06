@@ -1897,6 +1897,22 @@ fun App(store: Store) {
                                     fontSize = 9.sp, fontFamily = Mono, color = cs.onSurfaceVariant
                                 )
                                 Text(
+                                    "FAST PAIR EARBUD / SPEAKER MODELS %,d".format(BtDb.fastPairCount),
+                                    fontSize = 9.sp, fontFamily = Mono, color = cs.onSurfaceVariant
+                                )
+                                val unknownCount = remember(devices) { devices.values.count { UnknownExport.isUnidentified(it) } }
+                                Text(
+                                    "UNIDENTIFIED THIS SESSION: $unknownCount. EXPORT SENDS THEIR ADVERT CLUES (NO FULL MAC " +
+                                        "ADDRESSES, PERSONAL NAMES REMOVED) SO NEW RULES CAN BE WRITTEN FOR THEM.",
+                                    fontSize = 9.sp, color = cs.onSurfaceVariant
+                                )
+                                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                                    MiniButton("EXPORT UNIDENTIFIED ($unknownCount)", cs.tertiary) {
+                                        Vendors.status.value = runCatching { UnknownExport.share(ctx, devices.values.toList()) }
+                                            .getOrElse { "EXPORT FAILED: ${it.message}" }
+                                    }
+                                }
+                                Text(
                                     "RANDOMIZED ADDRESSES (MOST PHONES, WATCHES, TRACKERS) HAVE NO MAC ENTRY; THOSE ARE " +
                                         "IDENTIFIED FROM THEIR COMPANY ID, SERVICE UUIDS AND DEVICE TYPE INSTEAD. " +
                                         "OPTIONAL: UPDATE ONLINE OR IMPORT AN IEEE oui.csv / WIRESHARK manuf FILE FOR NEWER PREFIXES.",

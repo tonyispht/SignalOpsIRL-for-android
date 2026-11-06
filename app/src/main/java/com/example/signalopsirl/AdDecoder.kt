@@ -93,7 +93,26 @@ object AdDecoder {
         0x0220 to "AirPods", 0x0F20 to "AirPods 2", 0x1320 to "AirPods 3", 0x0E20 to "AirPods Pro",
         0x1420 to "AirPods Pro 2", 0x0A20 to "AirPods Max", 0x0520 to "BeatsX", 0x0620 to "Beats Solo3",
         0x0320 to "Powerbeats3", 0x0B20 to "Powerbeats Pro", 0x0C20 to "Beats Solo Pro",
-        0x1120 to "Beats Studio Buds", 0x1020 to "Beats Flex", 0x0920 to "Beats Studio3"
+        0x1120 to "Beats Studio Buds", 0x1020 to "Beats Flex", 0x0920 to "Beats Studio3",
+        0x1220 to "Beats Fit Pro", 0x1620 to "Beats Studio Buds+", 0x1720 to "Beats Studio Pro",
+        0x0055 to "AirTag", 0x0030 to "AirTag (Hermes)"
+    )
+
+    /** Apple AirPods / Beats model from a Proximity Pairing model number, null when unknown. */
+    fun appleModelName(model: Int): String? = AIRPODS_MODELS[model]
+
+    /**
+     * Samsung Galaxy Buds model/colour codes from the "easy setup" pairing advert (community research, same source as
+     * the Fast Pair list). Only shown on an exact match.
+     */
+    val SAMSUNG_BUDS = mapOf(
+        0xEE7A0C to "Galaxy Buds", 0x39EA48 to "Galaxy Buds2 (Light Purple)", 0xA7C62C to "Galaxy Buds2 (Bluish Silver)",
+        0x850116 to "Galaxy Buds Live (Black)", 0x3D8F41 to "Galaxy Buds2 (Gray & Black)", 0x3B6D02 to "Galaxy Buds2 (Bluish Chrome)",
+        0xAE063C to "Galaxy Buds2 (Gray Beige)", 0xB8B905 to "Galaxy Buds (Pure White)", 0xEAAA17 to "Galaxy Buds2 (Pure White)",
+        0xD30704 to "Galaxy Buds (Black)", 0x9DB006 to "Galaxy Buds (French Flag)", 0x101F1A to "Galaxy Buds Live (Dark Purple)",
+        0x859608 to "Galaxy Buds (Dark Blue)", 0x8E4503 to "Galaxy Buds (Pink)", 0x2C6740 to "Galaxy Buds2 (White & Black)",
+        0x3F6718 to "Galaxy Buds Live (Bronze)", 0x42C519 to "Galaxy Buds Live (Red)", 0xAE073A to "Galaxy Buds2 (Black & White)",
+        0x011716 to "Galaxy Buds2 (Sleek Black)"
     )
 
     /** Nearby Info activity codes (low nibble of its first byte), as reverse-engineered by the community. */
@@ -200,8 +219,9 @@ object AdDecoder {
 
     /**
      * Stable identification clues that need the payload bytes, not just IDs: appearance (APPEAR:03C1), Microsoft
-     * Swift Pair (SWIFTPAIR) and Connected Devices type (MSCDP:09), Google Find Hub tracker frames (FMDN) and
-     * Fast Pair model IDs (FASTPAIR:XXXXXX).
+     * Swift Pair (SWIFTPAIR, plus SWIFTNAME:<name> when it carries a display name) and Connected Devices type
+     * (MSCDP:09), Google Find Hub tracker frames (FMDN), Fast Pair model IDs (FASTPAIR:XXXXXX), Apple AirPods/Beats
+     * model numbers (APPLEMODEL:XXXX) and Samsung Galaxy Buds model codes (SAMBUDS:XXXXXX).
      */
     fun hints(packets: List<ByteArray>): Set<String> {
         val out = HashSet<String>()
@@ -215,10 +235,26 @@ object AdDecoder {
                 val e = i + 1 + l
                 when (type) {
                     0x19 -> if (e - s >= 2) out.add("APPEAR:%04X".format(u16le(pk, s)))
-                    0xFF -> if (e - s >= 4 && u16le(pk, s) == 0x0006) {
-                        when (u8(pk, s + 2)) {
-                            0x03 -> out.add("SWIFTPAIR")
-                            0x01 -> out.add("MSCDP:%02X".format(u8(pk, s + 3) and 0x1F))
+                    0xFF -> if (e - s >= 4) {
+                        when (u16le(pk, s)) {
+                            0x0006 -> when (u8(pk, s + 2)) {
+                                0x03 -> {
+                                    out.add("SWIFTPAIR")
+                                    // sub-scenario 0x00: the accessory's display name follows the RSSI byte
+                                    if (u8(pk, s + 3) == 0x00 && e - (s + 5) >= 2) {
+                                        val n = String(pk, s + 5, e - (s + 5), Charsets.UTF_8).filter { !it.isISOControl() }.trim()
+                                        if (n.length >= 2) out.add("SWIFTNAME:" + n.take(40))
+                                    }
+                                }
+                                0x01 -> out.add("MSCDP:%02X".format(u8(pk, s + 3) and 0x1F))
+                            }
+                            0x004C -> for ((ty, off, ln) in appleSpans(pk, s + 2, e)) {
+                                if (ty == 0x07 && ln >= 3) out.add("APPLEMODEL:%04X".format(u16be(pk, off + 1)))
+                            }
+                            0x0075 -> if (e - s >= 2 + 14 && u8(pk, s + 2) == 0x42 && u8(pk, s + 3) == 0x09 && u8(pk, s + 4) == 0x81) {
+                                val p = s + 2
+                                out.add("SAMBUDS:%06X".format((u8(pk, p + 10) shl 16) or (u8(pk, p + 11) shl 8) or u8(pk, p + 13)))
+                            }
                         }
                     }
                     0x16 -> if (e - s >= 3) {

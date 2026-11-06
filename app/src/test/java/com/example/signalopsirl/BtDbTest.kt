@@ -16,6 +16,7 @@ class BtDbTest {
         fun load() {
             fun r(n: String) = File(assets, "btdb/$n").bufferedReader()
             BtDb.load(r("companies.tsv"), r("uuid16.tsv"), r("appearance.tsv"), File(assets, "btdb/VERSION").readText())
+            BtDb.loadFastPair(File(assets, "btdb/fastpair.tsv").bufferedReader())
             Classifier.loadFrom(File(assets, "scanner_config.json").readText())
         }
 
@@ -106,5 +107,44 @@ class BtDbTest {
         val c = Classifier.classify(Evidence(RANDOM, "Bash Bunny", services = setOf(svc(0x1812))))
         assertNotNull(c)
         assertTrue(c!!.category != "computer_peripherals")
+    }
+
+    @Test fun fastPairModelNamed() {
+        // Fast Pair discoverable advert: UUID list FE2C + service data FE2C with the 3-byte model ID (Pixel Buds Pro)
+        val id = File(assets, "btdb/fastpair.tsv").readLines().first { it.contains("Pixel Buds Pro") }.substringBefore('\t')
+        val p = listOf(ad(0x03, "2C FE") + ad(0x16, "2C FE " + id.chunked(2).joinToString(" ")))
+        val c = Classifier.classify(Evidence(RANDOM, null, services = AdDecoder.serviceDataUuids(p), hints = AdDecoder.hints(p)))!!
+        assertEquals("wearables_audio", c.category)   // audio_wearables is an alias of it in the config
+        assertTrue(c.label!!.contains("Pixel Buds Pro"))
+    }
+
+    @Test fun fastPairSpamFlagged() {
+        val p = listOf(ad(0x16, "2C FE D9 9C A1"))   // ID used only by BLE spam tools
+        val c = Classifier.classify(Evidence(RANDOM, null, services = AdDecoder.serviceDataUuids(p), hints = AdDecoder.hints(p)))!!
+        assertEquals("hacker_pentest", c.category)
+        assertEquals(Tier.POSSIBLE, c.tier)
+    }
+
+    @Test fun beatsModelNamed() {
+        // Apple Proximity Pairing (type 07), model 0x1220 = Beats Fit Pro
+        val p = listOf(ad(0xFF, "4C 00 07 19 01 12 20 55 AA B5 31 00 00 11 22 33 44 55 66 77 88 99 AA BB CC DD EE FF 00"))
+        val c = Classifier.classify(Evidence(RANDOM, null, companyIds = setOf(0x004C), appleTypes = setOf(0x07), hints = AdDecoder.hints(p)))!!
+        assertEquals("Beats Fit Pro", c.label)
+    }
+
+    @Test fun swiftPairName() {
+        val name = "Surface Earbuds".toByteArray().joinToString(" ") { "%02X".format(it) }
+        val p = listOf(ad(0xFF, "06 00 03 00 80 $name"))
+        val c = Classifier.classify(Evidence(RANDOM, null, companyIds = setOf(0x0006), hints = AdDecoder.hints(p)))!!
+        assertEquals("Surface Earbuds", c.label)
+    }
+
+    @Test fun exportScrubsNamesAndAddresses() {
+        assertEquals("[NAME]'s AirPods Pro", UnknownExport.scrubName("Tony's AirPods Pro"))
+        assertEquals("JBL Flip 6", UnknownExport.scrubName("JBL Flip 6"))
+        val pk = ad(0x01, "06") + ad(0x09, "54 6F 6E 79") + ad(0xFF, "75 00 01 02")
+        val hex = UnknownExport.cleanPacket(pk)
+        assertTrue("0201" + "06" in hex.replace(" ", ""))
+        assertTrue(!hex.contains("546F6E79"))
     }
 }

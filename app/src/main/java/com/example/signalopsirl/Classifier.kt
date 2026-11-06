@@ -337,6 +337,9 @@ private class Db(root: JSONObject) {
             }
         }
 
+        // 4b. exact product models advertised in the payload (Fast Pair, AirPods/Beats, Galaxy Buds, Swift Pair name)
+        models(e)?.let { return it }
+
         // 5. GATT service UUIDs from the config, strongest first
         if (e.services.isNotEmpty()) {
             for (r in serviceRules) {
@@ -382,6 +385,39 @@ private class Db(root: JSONObject) {
         }
         e.vendor?.let { v ->
             return Classification(null, "", "", Tier.INFO, v, "OUI $ouiText")
+        }
+        return null
+    }
+
+    /** Product models from payload clues. Fast Pair IDs used only by BLE spam tools are flagged as such. */
+    private fun models(e: Evidence): Classification? {
+        if (e.hints.isEmpty()) return null
+        for (h in e.hints) {
+            when {
+                h.startsWith("FASTPAIR:") -> {
+                    val id = h.substring(9).toIntOrNull(16) ?: continue
+                    val (name, kind) = BtDb.fastPair(id) ?: continue
+                    return when (kind) {
+                        "spam" -> make(cat("hacker_pentest"), Tier.POSSIBLE, "BLE spam tool (fake Fast Pair popup)",
+                            "spam model ${h.substring(9)}", anon = true)
+                        "watch" -> make(cat("wearables_audio"), Tier.INFO, name, "Fast Pair model ${h.substring(9)}", anon = true)
+                        "phone" -> make(cat("smartphones"), Tier.INFO, name, "Fast Pair model ${h.substring(9)}", anon = true)
+                        else -> make(cat("audio_wearables"), Tier.INFO, name, "Fast Pair model ${h.substring(9)}", anon = true)
+                    }
+                }
+                h.startsWith("APPLEMODEL:") -> {
+                    val m = h.substring(11).toIntOrNull(16) ?: continue
+                    val name = AdDecoder.appleModelName(m) ?: continue
+                    val key = if (name.startsWith("AirTag")) "trackers_valuables" else "audio_wearables"
+                    return make(cat(key), Tier.INFO, name, "Apple model ${h.substring(11)}", anon = true)
+                }
+                h.startsWith("SAMBUDS:") -> {
+                    val name = AdDecoder.SAMSUNG_BUDS[h.substring(8).toIntOrNull(16) ?: continue] ?: continue
+                    return make(cat("audio_wearables"), Tier.INFO, name, "Samsung model ${h.substring(8)}", anon = true)
+                }
+                h.startsWith("SWIFTNAME:") ->
+                    return make(cat("computer_peripherals"), Tier.INFO, h.substring(10), "Microsoft Swift Pair name", anon = true)
+            }
         }
         return null
     }
