@@ -54,8 +54,6 @@ object Updater {
     private const val AUTO_EVERY_MS = 6 * 60 * 60_000L
 
     val state = MutableStateFlow(UpdateState())
-    /** Old-ID bridge only: installing the app under its new ID (see [Migration]). */
-    val moveState = MutableStateFlow(UpdateState())
 
     fun installedName(ctx: Context): String =
         runCatching { ctx.packageManager.getPackageInfo(ctx.packageName, 0).versionName }.getOrNull() ?: "?"
@@ -69,7 +67,7 @@ object Updater {
 
     /** Blocking; call off the main thread. On launch at most every few hours when automatic checks are on. */
     fun autoCheck(ctx: Context, store: Store) {
-        if (!BuildConfig.SELF_UPDATE || !store.autoUpdateCheckOn) return
+        if (!store.autoUpdateCheckOn) return
         val now = System.currentTimeMillis()
         if (now - store.lastUpdateCheck < AUTO_EVERY_MS && state.value.phase != UpdatePhase.AVAILABLE) return
         store.lastUpdateCheck = now
@@ -156,23 +154,8 @@ object Updater {
     fun permissionIntent(ctx: Context): Intent =
         Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, Uri.parse("package:${ctx.packageName}"))
 
-    /** Old-ID bridge: finds the new-ID APK in the latest release. Blocking. */
-    fun checkMove(ctx: Context) {
-        moveState.value = UpdateState(UpdatePhase.CHECKING)
-        moveState.value = try {
-            val rel = latest(Migration.NEW)?.takeIf { it.apkName.isNotEmpty() }
-            if (rel != null) UpdateState(UpdatePhase.AVAILABLE, rel)
-            else UpdateState(UpdatePhase.ERROR, message = "NEW APP NOT FOUND IN THE LATEST RELEASE")
-        } catch (e: Exception) {
-            UpdateState(UpdatePhase.ERROR, message = "CHECK FAILED: ${reason(e)}")
-        }
-    }
-
     /** Blocking; call off the main thread. Downloads the available update and starts the install. */
     fun downloadAndInstall(ctx: Context) = run(ctx, state, ctx.packageName)
-
-    /** Blocking. Old-ID bridge: downloads and installs the app under its new ID. */
-    fun downloadAndInstallMove(ctx: Context) = run(ctx, moveState, Migration.NEW)
 
     private fun run(ctx: Context, flow: MutableStateFlow<UpdateState>, target: String) {
         val rel = flow.value.release ?: return
@@ -221,8 +204,7 @@ object Updater {
             }
             val flags = PendingIntent.FLAG_UPDATE_CURRENT or (if (Build.VERSION.SDK_INT >= 31) PendingIntent.FLAG_MUTABLE else 0)
             val pending = PendingIntent.getBroadcast(
-                ctx, id, Intent(ctx, UpdateReceiver::class.java).setPackage(ctx.packageName)
-                    .putExtra(UpdateReceiver.EXTRA_MOVE, target != ctx.packageName), flags
+                ctx, id, Intent(ctx, UpdateReceiver::class.java).setPackage(ctx.packageName), flags
             )
             s.commit(pending.intentSender)
         }
@@ -306,14 +288,9 @@ object Updater {
 
 /** Receives the package installer's result: shows Android's confirmation screen, or reports a failure. */
 class UpdateReceiver : BroadcastReceiver() {
-    companion object {
-        const val EXTRA_MOVE = "signalops.move"
-    }
-
     override fun onReceive(context: Context, intent: Intent) {
         val status = intent.getIntExtra(PackageInstaller.EXTRA_STATUS, PackageInstaller.STATUS_FAILURE)
-        val move = intent.getBooleanExtra(EXTRA_MOVE, false)
-        val flow = if (move) Updater.moveState else Updater.state
+        val flow = Updater.state
         val s = flow.value
         when (status) {
             PackageInstaller.STATUS_PENDING_USER_ACTION -> {
@@ -328,7 +305,7 @@ class UpdateReceiver : BroadcastReceiver() {
                 }
             }
             PackageInstaller.STATUS_SUCCESS ->
-                flow.value = s.copy(phase = UpdatePhase.IDLE, message = if (move) "NEW APP INSTALLED" else "UPDATED")
+                flow.value = s.copy(phase = UpdatePhase.IDLE, message = "UPDATED")
             PackageInstaller.STATUS_FAILURE_ABORTED ->
                 flow.value = s.copy(phase = UpdatePhase.AVAILABLE, message = "CANCELLED")
             else -> {

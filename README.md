@@ -81,17 +81,12 @@ Full documentation for every feature and setting is in the **[User Guide](docs/U
 3. Open the folder in Android Studio and let Gradle sync.
 4. Turn on **Developer options** and **USB debugging** on your phone, plug it in, and press **Run**.
 
-To make an installable APK, use **Build > Build Bundle(s) / APK(s) > Build APK(s)**. There are two build flavors:
-`github` (the GitHub release, with in-app updates) and `fdroid` (no self-updater). From the command line:
-`gradle assembleGithubRelease` or `gradle assembleFdroidRelease`.
+To make an installable APK, use **Build > Build Bundle(s) / APK(s) > Build APK(s)**.
 
 ## Install
 
-- **GitHub:** download the APK from [Releases](https://github.com/tonyispht/SignalOpsIRL-for-android/releases/latest). Later
-  versions install from inside the app (**Settings > App updates**).
-- **F-Droid:** coming soon.
-- **Coming from 1.2.0 or older?** The app's ID changed in 1.3.0. Update the old app from inside it, then follow its
-  **SIGNAL OPS IRL HAS MOVED** card: it installs the new app and moves your progress.
+Download the APK from [Releases](https://github.com/tonyispht/SignalOpsIRL-for-android/releases/latest). Later versions
+install from inside the app (**Settings > App updates**).
 
 ---
 
@@ -99,7 +94,7 @@ To make an installable APK, use **Build > Build Bundle(s) / APK(s) > Build APK(s
 
 - **Everything stays on your phone.** The app has no accounts, no analytics and no ads, and it doesn't upload what it scans.
 - Location, when enabled, is kept in memory only and is never stored.
-- Network requests (GitHub build): the update check against this repository's GitHub releases (on launch at most every 6 hours; can be turned off in **Settings > App updates**), downloading an update you choose to install, and the optional update of the public IEEE manufacturer list (a full copy is already built in). The F-Droid build has no update check.
+- Network requests: the update check against this repository's GitHub releases (on launch at most every 6 hours; can be turned off in **Settings > App updates**), downloading an update you choose to install, and the optional update of the public IEEE manufacturer list (a full copy is already built in).
 
 ## Terms of Responsible Use
 
