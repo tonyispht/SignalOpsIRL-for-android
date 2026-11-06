@@ -1,0 +1,27 @@
+Categories:
+  - Connectivity
+  - Security
+License: MIT
+AuthorName: tonyispht
+SourceCode: https://github.com/tonyispht/SignalOpsIRL-for-android
+IssueTracker: https://github.com/tonyispht/SignalOpsIRL-for-android/issues
+Changelog: https://github.com/tonyispht/SignalOpsIRL-for-android/releases
+Donate: https://buymeacoffee.com/Tonyispht
+
+AutoName: Signal OPS IRL
+
+RepoType: git
+Repo: https://github.com/tonyispht/SignalOpsIRL-for-android.git
+
+Builds:
+  - versionName: 1.3.0
+    versionCode: 130
+    commit: v1.3.0
+    subdir: app
+    gradle:
+      - fdroid
+
+AutoUpdateMode: Version
+UpdateCheckMode: Tags
+CurrentVersion: 1.3.0
+CurrentVersionCode: 130

@@ -32,13 +32,21 @@
     <uses-permission android:name="android.permission.INTERNET" />
     <!-- In-app updates: hand a downloaded release APK to Android's installer (the user still confirms). -->
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+    <!-- Moving to the new app ID: offer to uninstall the old copy once its data has been moved. -->
+    <uses-permission android:name="android.permission.REQUEST_DELETE_PACKAGES" />
+
+    <!-- The old and new app IDs look each other up to move progress across (see Migration.kt). -->
+    <queries>
+        <package android:name="com.example.signalopsirl" />
+        <package android:name="io.github.tonyispht.signalopsirl" />
+    </queries>
     <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
 
     <application
         android:allowBackup="true"
         android:icon="@mipmap/ic_launcher"
         android:roundIcon="@mipmap/ic_launcher_round"
-        android:label="@string/app_name"
+        android:label="${appLabel}"
         android:supportsRtl="true"
         android:theme="@style/Theme.SignalOps">
 
@@ -56,6 +64,22 @@
             android:name=".ScanService"
             android:exported="false"
             android:foregroundServiceType="connectedDevice|location" />
+
+        <!-- Old-ID copy only: hands its data to the new app (checks the caller's ID and signing key). -->
+        <activity
+            android:name=".MigrationExportActivity"
+            android:exported="true"
+            android:excludeFromRecents="true"
+            android:noHistory="true"
+            android:theme="@android:style/Theme.Translucent.NoTitleBar" />
+
+        <!-- New app only: imports the old copy's data in its own process, then restarts the app. -->
+        <activity
+            android:name=".MigrationImportActivity"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:process=":migrate"
+            android:theme="@android:style/Theme.Translucent.NoTitleBar" />
 
         <receiver
             android:name=".UpdateReceiver"
