@@ -13,6 +13,7 @@ fun Classifier.loadAssets(ctx: Context): Unit = synchronized(BtDb) {
             fun open(n: String) = runCatching { a.open("btdb/$n").bufferedReader(Charsets.UTF_8) }.getOrNull()
             val ver = runCatching { a.open("btdb/VERSION").bufferedReader().use { it.readText() } }.getOrNull()
             BtDb.load(open("companies.tsv"), open("uuid16.tsv"), open("appearance.tsv"), ver)
+            BtDb.loadFastPair(open("fastpair.tsv"))
         }
     }
     if (isReady) return@synchronized

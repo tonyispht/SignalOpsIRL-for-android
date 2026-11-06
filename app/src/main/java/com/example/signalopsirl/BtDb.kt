@@ -21,6 +21,7 @@ object BtDb {
     @Volatile private var companies: Map<Int, String> = emptyMap()
     @Volatile private var uuids: Map<Int, Uuid> = emptyMap()
     @Volatile private var appearance: Map<Int, Pair<String, String>> = emptyMap()
+    @Volatile private var fastPair: Map<Int, Pair<String, String>> = emptyMap()
 
     /** "2026-11-06" from assets/btdb/VERSION, or null before loading. */
     @Volatile var built: String? = null
@@ -30,6 +31,7 @@ object BtDb {
     val companyCount get() = companies.size
     val uuidCount get() = uuids.size
     val appearanceCount get() = appearance.size
+    val fastPairCount get() = fastPair.size
 
     // ---- loading -------------------------------------------------------------------------------
 
@@ -52,6 +54,19 @@ object BtDb {
         }
         built = version?.substringBefore('\t')?.trim()?.ifEmpty { null }
     }
+
+    /** assets/btdb/fastpair.tsv: Google Fast Pair model ID -> (name, kind: audio | watch | phone | spam). */
+    @Synchronized
+    fun loadFastPair(tsv: BufferedReader?) {
+        tsv?.use { r ->
+            val m = HashMap<Int, Pair<String, String>>(600)
+            r.forEachLine { l -> row(l)?.let { (k, f) -> k.toIntOrNull(16)?.let { m[it] = f[0] to f.getOrElse(1) { "audio" } } } }
+            fastPair = m
+        }
+    }
+
+    /** (product name, kind) for a Fast Pair model ID, or null when the model is not in the list. */
+    fun fastPair(model: Int): Pair<String, String>? = fastPair[model]
 
     private fun row(l: String): Pair<String, List<String>>? {
         val parts = l.split('\t')

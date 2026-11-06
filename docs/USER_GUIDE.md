@@ -207,12 +207,24 @@ from the first launch with no download and no internet:
 | `uuid16.tsv` | every 16-bit service UUID: SIG services, company (member) UUIDs, standards-body UUIDs | naming services, identifying by service owner |
 | `appearance.tsv` | GAP appearance values (watch, keyboard, hearing aid, tag...) | the device type a device says it is |
 | `oui.tsv` | the IEEE MAC prefix registry (MA-L, MA-M, MA-S; about 54,000) | the maker of devices with a public address |
+| `fastpair.tsv` | Google Fast Pair model IDs (about 450 earbuds, headphones, speakers, watches) | exact product names; IDs used only by BLE spam tools are flagged |
 
 **Settings > Bluetooth DB** shows the counts and the date of the lists. It is Bluetooth only (no Wi-Fi tables).
 **UPDATE ONLINE** (optional) fetches newer IEEE prefixes on top, **IMPORT FILE** accepts an IEEE `oui.csv` /
 `mam.csv` / `oui36.csv` or a Wireshark `manuf` file, and **REMOVE UPDATES** goes back to the built-in list.
 
-To refresh the built-in lists before a release, run `python3 tools/build_bt_db.py` and rebuild.
+To refresh the built-in lists before a release, run `python3 tools/build_bt_db.py` (and `tools/build_fastpair.py`
+for the Fast Pair models) and rebuild.
+
+Exact product names also come from AirPods / Beats model numbers, Samsung Galaxy Buds pairing adverts and Microsoft
+Swift Pair display names. Fast Pair and Galaxy Buds models are mostly visible while the earbuds are in pairing mode
+(case open, not yet connected).
+
+**EXPORT UNIDENTIFIED** (Settings > Bluetooth DB) shares a JSON file listing the devices this session could not put
+in a category, grouped by advert shape, with their company IDs, service UUIDs, appearance, payload hints and raw advert
+bytes. It contains no full MAC addresses (only the maker prefix of public addresses), personal names such as
+"Tony's" are replaced with [NAME], and names/addresses are removed from the raw bytes. Send it to whoever maintains
+`scanner_config.json` so new rules can be written.
 
 Addresses with the locally-administered bit set are labeled RANDOM. Many BLE devices (phones, watches, trackers)
 use random addresses, so they will not resolve by MAC prefix; they are identified from their company ID, service
