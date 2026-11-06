@@ -56,6 +56,13 @@ jobs:
             echo "Keystore size: $(wc -c < "$RUNNER_TEMP/release.jks") bytes (expected 4324)"
             if ! keytool -list -keystore "$RUNNER_TEMP/release.jks" -storetype PKCS12 -storepass "$PW" -alias "$SIGNING_KEY_ALIAS" > "$RUNNER_TEMP/kt.txt" 2>&1; then
               sed 's/^/keytool: /' "$RUNNER_TEMP/kt.txt"
+              echo "Password length: ${#PW} (expected 32)"
+              if openssl asn1parse -inform DER -in "$RUNNER_TEMP/release.jks" > /dev/null 2>&1; then
+                echo "Keystore file structure: OK"
+              else
+                echo "Keystore file structure: DAMAGED (SIGNING_KEYSTORE_BASE64 was changed while pasting)"
+              fi
+              openssl pkcs12 -in "$RUNNER_TEMP/release.jks" -info -noout -passin "pass:$PW" 2>&1 | grep -i -m2 "mac\|error\|verified" | sed 's/^/openssl: /' || true
               echo "::error::The signing secrets don't match. Check SIGNING_STORE_PASSWORD and SIGNING_KEYSTORE_BASE64."
               exit 1
             fi
