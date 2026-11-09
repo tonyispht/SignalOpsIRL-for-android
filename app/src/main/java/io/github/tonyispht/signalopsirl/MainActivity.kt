@@ -55,6 +55,9 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.ui.unit.Density
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.ui.platform.LocalView
@@ -346,7 +349,6 @@ fun App(store: Store) {
     var profileOpen by rememberSaveable { mutableStateOf(false) }
     var profileTab by rememberSaveable { mutableStateOf("PROFILE") }
     var loginOpen by rememberSaveable { mutableStateOf(false) }
-    var dexOpen by rememberSaveable { mutableStateOf(false) }
     val dex by Dex.state.collectAsState()
     var loginAutoShown by rememberSaveable { mutableStateOf(false) }
     var mergeRot by remember { mutableStateOf(store.mergeRotatingOn) }
@@ -415,7 +417,35 @@ fun App(store: Store) {
     var newMin by rememberSaveable { mutableStateOf(0) }   // 0 = all signals, else "new in the last N minutes"
     var nowMs by remember { mutableLongStateOf(System.currentTimeMillis()) }
     var modeOpen by rememberSaveable { mutableStateOf(false) }
-    var settingsOpen by rememberSaveable { mutableStateOf(false) }
+    var tab by rememberSaveable { mutableStateOf(MainTab.SCAN) }
+    val settingsOpen = tab == MainTab.SETTINGS
+    var pinned by remember { mutableStateOf(store.pinned) }
+    var textSize by remember { mutableIntStateOf(store.textSize) }
+    var tourOpen by remember { mutableStateOf(false) }
+    var sigQuery by rememberSaveable { mutableStateOf("") }
+    // "" = everything, "ALERT" / "POSSIBLE" = that tier, "PINNED", "NAMED", or a category key
+    var sigFilter by rememberSaveable { mutableStateOf("") }
+    var sigSort by rememberSaveable { mutableIntStateOf(0) }
+    var sigToolsOpen by rememberSaveable { mutableStateOf(false) }
+    var locatorOpen by remember { mutableStateOf(false) }
+    var report by remember { mutableStateOf<SessionReport?>(null) }
+    var reportOn by remember { mutableStateOf(store.sessionReportOn) }
+    var pickTargets by remember { mutableStateOf(false) }
+    var setPage by rememberSaveable { mutableStateOf("ALERTS") }
+    var setQuery by rememberSaveable { mutableStateOf("") }
+    var mineTick by remember { mutableIntStateOf(0) }
+    val alertsMuted by ScanBus.alertsMuted.collectAsState()
+    /** Settings page filter: the chosen page, or every page while searching. */
+    fun pg(name: String) = setQuery.isNotBlank() || setPage == "ALL" || setPage == name
+    fun togglePin(addr: String) {
+        pinned = if (addr in pinned) pinned - addr else pinned + addr
+        store.pinned = pinned
+    }
+    var prevTab by remember { mutableStateOf(tab) }
+    LaunchedEffect(tab) {
+        if (prevTab == MainTab.DEX && tab != MainTab.DEX) Dex.markViewed()
+        prevTab = tab
+    }
     var vendorsOpen by rememberSaveable { mutableStateOf(false) }
     var updatesOpen by rememberSaveable { mutableStateOf(false) }
     var autoUpd by remember { mutableStateOf(store.autoUpdateCheckOn) }
@@ -460,6 +490,30 @@ fun App(store: Store) {
             sessionAlerts = 0
             sessionKnown = devices.keys.toSet()
         }
+        if (was != Phase.IDLE && phase == Phase.IDLE) {
+            val dur = System.currentTimeMillis() - sessionStart
+            if (reportOn && dur >= 20_000L) {
+                val seen = devices.values.filter { it.lastSeen >= sessionStart }
+                val ds = Dex.state.value
+                val cats = Classifier.categories()
+                val peak = seen.maxByOrNull { it.rssi }
+                report = SessionReport(
+                    durationMs = dur,
+                    heard = seen.size,
+                    fresh = seen.count { it.address !in sessionKnown },
+                    alerts = sessionAlerts,
+                    xp = (game.xp - sessionXp).coerceAtLeast(0L),
+                    newTypes = ds.categories.filter { c -> ds.entries.any { it.key == "T:" + c.key && it.first >= sessionStart } },
+                    rare = seen.mapNotNull { it.cls?.category }.distinct()
+                        .map { it to rarityOf(it) }.filter { it.second.ordinal >= Rarity.RARE.ordinal }
+                        .sortedByDescending { it.second.ordinal }
+                        .map { (k, r) -> (cats.firstOrNull { it.key == k }?.title ?: k) to r },
+                    models = seen.mapNotNull { d -> d.cls?.takeIf { isModelReason(it.reason) }?.label }.distinct(),
+                    peakName = peak?.let { nicks.nick(it.address) ?: it.name ?: it.cls?.label },
+                    peakRssi = peak?.rssi
+                )
+            }
+        }
         if (!fx || !crtPowerFx || !booted) return@LaunchedEffect
         if (was == Phase.IDLE && phase != Phase.IDLE) crtEvent = CrtEvent(offFirst = false)
         else if (was != Phase.IDLE && phase == Phase.IDLE) {
@@ -467,7 +521,7 @@ fun App(store: Store) {
             val peak = seen.maxByOrNull { it.rssi }
             crtEvent = CrtEvent(
                 offFirst = true,
-                summary = SessionSummary(
+                summary = if (report != null) null else SessionSummary(
                     durationMs = System.currentTimeMillis() - sessionStart,
                     heard = seen.size,
                     fresh = seen.count { it.address !in sessionKnown },
@@ -533,8 +587,9 @@ fun App(store: Store) {
     }
 
     // Opens the login calendar by itself once per launch, after the boot sequence, when today's reward is waiting.
-    LaunchedEffect(ready, login.canClaim) {
-        if (ready && login.canClaim && !loginAutoShown) {
+    LaunchedEffect(ready) { if (ready && !store.tourDone) tourOpen = true }
+    LaunchedEffect(ready, login.canClaim, tourOpen) {
+        if (ready && !tourOpen && store.tourDone && login.canClaim && !loginAutoShown) {
             loginAutoShown = true
             loginOpen = true
         }
@@ -716,6 +771,9 @@ fun App(store: Store) {
     val cutoutTop = WindowInsets.displayCutout.asPaddingValues().calculateTopPadding()
     val fsTop = if (fullscreen) maxOf(cutoutTop, 24.dp) else 0.dp
     val crt: Modifier = if (fx) Modifier.crtOverlay(SpyColors.primary) else Modifier
+    val baseDensity = LocalDensity.current
+    val textScale = when (textSize) { 1 -> 1.15f; 2 -> 1.3f; else -> 1f }
+    CompositionLocalProvider(LocalDensity provides Density(baseDensity.density, baseDensity.fontScale * textScale)) {
     Box(
         Modifier
             .fillMaxSize()
@@ -760,7 +818,7 @@ fun App(store: Store) {
                 contentPadding = PaddingValues(
                     start = 10.dp, end = 10.dp,
                     top = 6.dp,
-                    bottom = inner.calculateBottomPadding() + 12.dp
+                    bottom = inner.calculateBottomPadding() + 12.dp + NAV_H
                 ),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
@@ -773,7 +831,7 @@ fun App(store: Store) {
                         onDaily = { profileTab = "DAILY"; profileOpen = true },
                         onLogin = { loginOpen = true },
                         dexNew = dex.newCount,
-                        onDex = { dexOpen = true }
+                        onDex = { tab = MainTab.DEX }
                     )
                 }
 
@@ -803,6 +861,12 @@ fun App(store: Store) {
                                         Text(a.label, fontSize = 12.sp, color = cs.onErrorContainer)
                                         SignalBars(a.rssi, cs.error, Modifier.padding(start = 8.dp))
                                     }
+                                }
+                                if (a.label.startsWith("TRACKER")) {
+                                    MiniButton("MINE", cs.secondary) {
+                                        TrackerWatch.markMine(store, a.address, a.address); mineTick++; activeAlert = null
+                                    }
+                                    MiniButton("VIEW", cs.error) { tab = MainTab.TRACKERS; activeAlert = null }
                                 }
                                 MiniButton("DISMISS", cs.error) { activeAlert = null }
                             }
@@ -836,6 +900,7 @@ fun App(store: Store) {
                             ) {
                                 Text("// HOT/COLD TRACKER", modifier = Modifier.weight(1f), fontSize = 12.sp,
                                     fontWeight = FontWeight.Bold, letterSpacing = 1.sp, color = cs.secondary)
+                                MiniButton("FULL SCREEN", cs.secondary) { locatorOpen = true }
                                 MiniButton(if (trackMuted) "UNMUTE" else "MUTE", cs.secondary) {
                                     ScanBus.trackMuted.value = !trackMuted
                                 }
@@ -950,6 +1015,12 @@ fun App(store: Store) {
                                 }
                                 error?.let { Text("ERR: $it", fontSize = 10.sp, color = cs.error) }
                                 note?.let { Text(it, fontSize = 10.sp, color = cs.tertiary) }
+                                if (alertsMuted) {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Text("ALERTS MUTED", fontSize = 10.sp, color = AlertAmber, modifier = Modifier.weight(1f))
+                                        MiniButton("UNMUTE", AlertAmber, vPad = 2.dp) { ScanBus.alertsMuted.value = false }
+                                    }
+                                }
                                 // Line 2: radio counters on the left, current speed on the right (only while moving).
                                 val counters = if (running && scanInfo.isNotEmpty())
                                     "EXT ${extSeen.first}" +
@@ -1022,7 +1093,7 @@ fun App(store: Store) {
                             }
                         }
                         IconButton(
-                            onClick = { settingsOpen = true },
+                            onClick = { tab = MainTab.SETTINGS },
                             modifier = Modifier.align(Alignment.TopEnd).size(28.dp)
                         ) {
                             Icon(Icons.Filled.Settings, contentDescription = "Settings", tint = cs.primary,
@@ -1032,47 +1103,23 @@ fun App(store: Store) {
                     }
                 }
 
-                // Item trackers that have been around for a while (tracker-follow detection)
-                if (trackerOn && trackers.isNotEmpty()) {
+                // Trackers that keep showing up: a short warning here, the full list on the TRACKERS tab
+                if (trackerOn && trackers.any { it.level != TrackLevel.WATCHING }) {
                     item {
-                        val worst = trackers.first().level
-                        HudCard(
-                            border = when (worst) {
-                                TrackLevel.FOLLOWING -> AlertRed
-                                TrackLevel.LINGERING -> AlertAmber
-                                else -> cs.secondary
-                            }
-                        ) {
-                            SectionHeader("Trackers (${trackers.size})", trackersOpen, { trackersOpen = !trackersOpen })
-                            if (trackersOpen) {
-                                Text(
-                                    "ITEM TRACKERS HEARD FOR A WHILE. FOLLOWING = STILL AROUND AFTER YOU MOVED 800 FT+. MARK YOUR OWN WITH MINE.",
-                                    fontSize = 9.sp, color = cs.onSurfaceVariant,
-                                    modifier = Modifier.padding(start = 10.dp, end = 10.dp, bottom = 2.dp)
-                                )
-                                trackers.take(12).forEach { t ->
-                                    val lc = when (t.level) {
-                                        TrackLevel.FOLLOWING -> AlertRed
-                                        TrackLevel.LINGERING -> AlertAmber
-                                        else -> cs.onSurfaceVariant
-                                    }
-                                    Row(
-                                        Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 2.dp),
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        Column(Modifier.weight(1f)) {
-                                            Text(t.label, fontSize = 12.sp, fontWeight = FontWeight.Bold, maxLines = 1,
-                                                overflow = TextOverflow.Ellipsis)
-                                            Text(
-                                                "${t.level.name}  ${t.minutes}M  " +
-                                                    (if (t.meters >= 0) "MOVED ${distanceText(t.meters)}" else "NO LOCATION") +
-                                                    "  ${t.rssi} DBM",
-                                                fontSize = 9.sp, fontFamily = Mono, color = lc
-                                            )
-                                        }
-                                        MiniButton("MINE", cs.secondary, vPad = 4.dp) { TrackerWatch.markMine(store, t.key, t.address) }
-                                    }
+                        val bad = trackers.filter { it.level != TrackLevel.WATCHING }
+                        val worst = bad.first().level
+                        val wc = if (worst == TrackLevel.FOLLOWING) AlertRed else AlertAmber
+                        HudCard(border = wc) {
+                            Row(Modifier.padding(10.dp).fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                                Column(Modifier.weight(1f)) {
+                                    Text("\u26A0 TRACKER ${worst.name}", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = wc)
+                                    Text(
+                                        if (bad.size == 1) "${bad.first().label} keeps showing up around you."
+                                        else "${bad.size} trackers keep showing up around you.",
+                                        fontSize = 12.sp, color = cs.onSurface
+                                    )
                                 }
+                                MiniButton("VIEW", wc) { tab = MainTab.TRACKERS }
                             }
                         }
                     }
@@ -1087,7 +1134,7 @@ fun App(store: Store) {
                         if (sensorRows.isNotEmpty()) HudCard(border = cs.secondary) {
                             SectionHeader("Sensors (${sensorRows.size})", sensorsOpen, { sensorsOpen = !sensorsOpen })
                             if (sensorsOpen) {
-                                Text("TAP A SENSOR FOR ITS FULL ADVERTISING DATA", fontSize = 9.sp,
+                                Text("Tap a sensor for its full advertising data. Graphs show the last 2 hours.", fontSize = 11.sp,
                                     color = cs.onSurfaceVariant, modifier = Modifier.padding(start = 10.dp, bottom = 2.dp))
                                 sensorRows.take(20).forEach { (d, sr) ->
                                     val sTitle = nicks.nick(d.address) ?: d.name ?: d.cls?.label ?: "(NO NAME) ${d.address.takeLast(5)}"
@@ -1106,6 +1153,16 @@ fun App(store: Store) {
                                             sr.values.take(5).joinToString("   ") { "${it.first} ${it.second}" },
                                             fontSize = 12.sp, fontFamily = Mono, color = cs.primary
                                         )
+                                        val hist = ScanBus.sensorSeries(d.address)
+                                        val useT = hist.count { !it.second.isNaN() } >= 3
+                                        val series = hist.map { (if (useT) it.second else it.third).toFloat() }
+                                        if (series.count { !it.isNaN() } >= 3) {
+                                            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 2.dp)) {
+                                                Sparkline(series, if (useT) GameOrange else cs.secondary, Modifier.weight(1f).height(30.dp))
+                                                val mins = (hist.last().first - hist.first().first) / 60_000L
+                                                Text("  ${if (useT) "\u00B0F" else "%RH"} \u00B7 ${mins}m", fontSize = 10.sp, color = cs.onSurfaceVariant)
+                                            }
+                                        }
                                     }
                                 }
                             }
@@ -1117,10 +1174,28 @@ fun App(store: Store) {
                 item {
                     // Raw list: every address its own row, nothing merged, grouped or filtered, and a much longer list.
                     val mergeEff = mergeRot && !rawList
+                    val q = sigQuery.trim()
+                    val sigPred: ((SeenDevice) -> Boolean)? = if (rawList || (q.isEmpty() && sigFilter.isEmpty())) null else { dd ->
+                        val okQ = q.isEmpty() || listOfNotNull(
+                            nicks.nick(dd.address), dd.name, dd.cls?.label, dd.cls?.title, dd.appleModel, dd.address,
+                            if (Vendors.isLocal(dd.address)) null else Vendors.lookup(dd.address)
+                        ).any { it.contains(q, ignoreCase = true) } ||
+                            dd.companyIds.any { Classifier.companyName(it)?.contains(q, ignoreCase = true) == true }
+                        val okF = when (sigFilter) {
+                            "" -> true
+                            "ALERT" -> dd.cls?.tier == Tier.ALERT
+                            "POSSIBLE" -> dd.cls?.tier == Tier.POSSIBLE
+                            "PINNED" -> dd.address in pinned
+                            "NAMED" -> dd.name != null || nicks.nick(dd.address) != null
+                            else -> dd.cls?.category == sigFilter
+                        }
+                        okQ && okF
+                    }
                     val signalRows = buildSignalRows(
                         devices.values, mergeEff, onePerName && !rawList, nowMs, nicks,
                         limit = if (rawList) 500 else 40,
-                        newWithinMs = if (rawList) 0L else newMin * 60_000L, groupAnon = groupAnon && !rawList
+                        newWithinMs = if (rawList) 0L else newMin * 60_000L, groupAnon = groupAnon && !rawList,
+                        filter = sigPred, sort = if (rawList) 0 else sigSort, pinned = pinned
                     )
                     val prunedN = ScanBus.pruned.get()
                     val hiddenParts = listOfNotNull(
@@ -1128,6 +1203,7 @@ fun App(store: Store) {
                         signalRows.grouped.takeIf { it > 0 }?.let { "GROUPED $it" },
                         signalRows.sameName.takeIf { it > 0 }?.let { "SAME NAME $it" },
                         signalRows.filteredNew.takeIf { it > 0 }?.let { "NEW FILTER $it" },
+                        signalRows.searched.takeIf { it > 0 }?.let { "SEARCH/FILTER $it" },
                         signalRows.cut.takeIf { it > 0 }?.let { "LIST LIMIT $it" }
                     )
                     // Rows that leave the list dissolve out as "ghosts" instead of just vanishing.
@@ -1165,11 +1241,59 @@ fun App(store: Store) {
                                 prevAddrs.clear()
                                 prevAddrs.addAll(addrs)
                             }
-                            if (!rawList) Box(Modifier.padding(start = 10.dp, end = 10.dp, bottom = 4.dp)) {
-                                LabeledChips(
-                                    "FILTER", listOf(0, 1, 5, 15), newMin,
-                                    { if (it == 0) "ALL" else "NEW ${it}M" }
-                                ) { newMin = it }
+                            if (!rawList) Column(
+                                Modifier.padding(start = 10.dp, end = 10.dp, bottom = 4.dp),
+                                verticalArrangement = Arrangement.spacedBy(4.dp)
+                            ) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    BasicTextField(
+                                        value = sigQuery,
+                                        onValueChange = { sigQuery = it.take(40) },
+                                        singleLine = true,
+                                        textStyle = TextStyle(color = cs.onSurface, fontFamily = Mono, fontSize = 13.sp),
+                                        cursorBrush = SolidColor(cs.primary),
+                                        modifier = Modifier.weight(1f),
+                                        decorationBox = { inner2 ->
+                                            Box(Modifier.border(1.dp, if (sigQuery.isNotEmpty()) cs.primary else cs.outline, BtnShape)
+                                                .padding(horizontal = 10.dp, vertical = 7.dp)) {
+                                                if (sigQuery.isEmpty()) Text("\u2315 Search name, maker, type...", fontSize = 13.sp, color = cs.onSurfaceVariant)
+                                                inner2()
+                                            }
+                                        }
+                                    )
+                                    if (sigQuery.isNotEmpty()) MiniButton("X", cs.onSurfaceVariant) { sigQuery = "" }
+                                    val active = newMin > 0 || sigFilter.isNotEmpty() || sigSort != 0
+                                    MiniButton(
+                                        (if (active) "FILTERS \u2022" else "FILTERS") + if (sigToolsOpen) " \u25B4" else " \u25BE",
+                                        if (active) cs.tertiary else cs.primary
+                                    ) { sigToolsOpen = !sigToolsOpen }
+                                }
+                                if (sigToolsOpen) {
+                                    LabeledChips("SHOW", listOf(0, 1, 5, 15), newMin, { if (it == 0) "ALL" else "NEW ${it}M" }) { newMin = it }
+                                    LabeledChips("SORT", listOf(0, 1, 2), sigSort, {
+                                        when (it) { 0 -> "SIGNAL"; 1 -> "NEWEST"; else -> "NAME" }
+                                    }) { sigSort = it }
+                                    val catsPresent = devices.values.mapNotNull { it.cls }.filter { it.category != null }
+                                        .groupBy { it.category!! }.map { (k, v) -> Triple(k, (v.first().icon + " " + v.first().title).trim(), v.size) }
+                                        .sortedByDescending { it.third }
+                                    val keys = (listOf("", "PINNED", "NAMED", "ALERT", "POSSIBLE") + catsPresent.map { it.first } +
+                                        listOf(sigFilter)).distinct()
+                                    ChipRow(keys, sigFilter, { k ->
+                                        when (k) {
+                                            "" -> "ALL"
+                                            "PINNED" -> "\u2605 PINNED"
+                                            "NAMED" -> "NAMED"
+                                            "ALERT" -> "ALERT"
+                                            "POSSIBLE" -> "POSSIBLE"
+                                            else -> catsPresent.firstOrNull { it.first == k }?.let { "${it.second} ${it.third}" } ?: k
+                                        }
+                                    }) { sigFilter = it }
+                                    if (newMin > 0 || sigFilter.isNotEmpty() || sigSort != 0) {
+                                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                                            MiniButton("RESET FILTERS", cs.onSurfaceVariant, vPad = 4.dp) { newMin = 0; sigFilter = ""; sigSort = 0 }
+                                        }
+                                    }
+                                }
                             }
                             // Everything the scanner holds that has no row of its own, and why: one line, tap for details.
                             val statsHot = signalRows.hidden > 0 || prunedN > 0
@@ -1193,13 +1317,20 @@ fun App(store: Store) {
                                     if (signalRows.hidden > 0 && !rawList) {
                                         Text("TAP RAW TO SEE EVERY ADDRESS", fontSize = 9.sp, color = statsColor)
                                     }
-                                    Text("TAP A SIGNAL TO LOCATE IT OR CONNECT FOR DETAILS", fontSize = 9.sp, color = cs.onSurfaceVariant)
+                                    Text("TAP A SIGNAL FOR ITS DETAILS", fontSize = 9.sp, color = cs.onSurfaceVariant)
                                 }
                             }
                             if (shown.isEmpty()) {
-                                Text(if (newMin > 0 && !rawList) "NO NEW SIGNALS IN THE LAST ${newMin}M." else "NO SIGNALS.",
-                                    fontSize = 10.sp, color = cs.onSurfaceVariant,
-                                    modifier = Modifier.padding(start = 10.dp, bottom = 10.dp))
+                                val msg = when {
+                                    devices.isEmpty() && !running ->
+                                        "Nothing heard yet. Tap INITIATE SCAN above to start listening for the Bluetooth devices around you."
+                                    devices.isEmpty() -> "Listening... devices usually appear within a few seconds. Make sure Bluetooth is on."
+                                    !rawList && (sigQuery.isNotBlank() || sigFilter.isNotEmpty()) -> "No device matches your search or filter."
+                                    newMin > 0 && !rawList -> "No new signals in the last $newMin min."
+                                    else -> "No signals."
+                                }
+                                Text(msg, fontSize = 13.sp, lineHeight = 17.sp, color = cs.onSurfaceVariant,
+                                    modifier = Modifier.padding(start = 10.dp, end = 10.dp, top = 4.dp, bottom = 12.dp))
                             }
                             mergeGhosts(shown, ghosts).forEach { entry ->
                               if (entry is RowGhost) {
@@ -1314,40 +1445,16 @@ fun App(store: Store) {
                                     Text(
                                         roughDistance(d.rssi), fontSize = 9.sp, fontFamily = Mono,
                                         color = cs.onSurfaceVariant, maxLines = 1, softWrap = false,
-                                        textAlign = TextAlign.End, modifier = Modifier.width(28.dp)
+                                        textAlign = TextAlign.End, modifier = Modifier.widthIn(min = 30.dp).padding(start = 4.dp)
                                     )
                                     Text(
                                         ageText(ageMs), fontSize = 9.sp, fontFamily = Mono,
                                         color = if (ageMs < 5_000L) cs.secondary else cs.onSurfaceVariant,
                                         maxLines = 1, softWrap = false,
-                                        textAlign = TextAlign.End, modifier = Modifier.width(22.dp)
+                                        textAlign = TextAlign.End, modifier = Modifier.widthIn(min = 24.dp).padding(start = 4.dp)
                                     )
-                                    val n = if (count > 1) null else d.name
-                                    // Name targets that match this device, and its exact MAC target (a device that is
-                                    // already a target gets -N / -MAC, which remove them again).
-                                    val nameHits = if (n == null) emptyList() else watch.filter {
-                                        Matcher.isPlain(it) && !Matcher.isMac(it) && !Matcher.isMacPrefix(it) &&
-                                            Matcher.kind(it) == "NAME" && Matcher.matches(it, n, d.address)
-                                    }
-                                    val macHit = if (count > 1) null else watch.firstOrNull {
-                                        Matcher.isMac(it) && Matcher.matches(it, null, d.address)
-                                    }
-                                    // Always reserve the +N slot so +MAC and the bars stay in fixed columns
-                                    if (n != null) {
-                                        if (nameHits.isNotEmpty()) {
-                                            MiniButton("-N", cs.error, vPad = 2.dp) { removeEntries(nameHits) }
-                                        } else {
-                                            MiniButton("+N", vPad = 2.dp) { addEntry(n) }
-                                        }
-                                    } else {
-                                        Box(Modifier.alpha(0f)) { MiniButton("+N", vPad = 2.dp) { } }
-                                    }
-                                    if (count > 1) {
-                                        Box(Modifier.alpha(0f)) { MiniButton("+MAC", vPad = 2.dp) { } }
-                                    } else if (macHit != null) {
-                                        MiniButton("-MAC", cs.error, vPad = 2.dp) { removeEntries(listOf(macHit)) }
-                                    } else {
-                                        MiniButton("+MAC", vPad = 2.dp) { addEntry(d.address) }
+                                    if (count == 1 && d.address in pinned) {
+                                        Text("\u2605", fontSize = 13.sp, color = GameGold, modifier = Modifier.padding(start = 4.dp))
                                     }
                                     SignalBars(d.rssi, if (d.matched) AlertRed else cs.primary,
                                         Modifier.padding(start = 6.dp, end = 2.dp))
@@ -1364,7 +1471,7 @@ fun App(store: Store) {
         if (fx && rainFx) DataRain(active = running, modifier = Modifier.fillMaxSize())
 
         // ---- settings panel: slides in over the main screen ----
-        BackHandler(enabled = settingsOpen) { settingsOpen = false }
+        BackHandler(enabled = tab != MainTab.SCAN) { tab = MainTab.SCAN }
         AnimatedVisibility(
             visible = settingsOpen,
             enter = slideInHorizontally(tween(220)) { it } + fadeIn(tween(220)),
@@ -1377,6 +1484,7 @@ fun App(store: Store) {
                     .statusBarsPadding()
                     .padding(top = fsTop)
                     .navigationBarsPadding()
+                    .padding(bottom = NAV_H + 1.dp)
                     .imePadding()
                     .pointerInput(Unit) { detectTapGestures { } }
             ) {
@@ -1386,7 +1494,7 @@ fun App(store: Store) {
                 ) {
                     GlitchText("// SETTINGS", cs.primary, 16.sp, fx, letterSpacing = 2.sp)
                     Spacer(Modifier.weight(1f))
-                    IconButton(onClick = { settingsOpen = false }, modifier = Modifier.size(40.dp)) {
+                    IconButton(onClick = { tab = MainTab.SCAN }, modifier = Modifier.size(40.dp)) {
                         Icon(Icons.Filled.Close, contentDescription = "Close settings", tint = cs.primary,
                             modifier = Modifier.size(20.dp))
                     }
@@ -1399,6 +1507,7 @@ fun App(store: Store) {
                         .verticalScroll(rememberScrollState())
                         .padding(start = 10.dp, end = 10.dp, top = 8.dp, bottom = 12.dp)
                 ) {
+                  CompositionLocalProvider(LocalSettingsQuery provides setQuery) {
                     HudCard {
                         Box(Modifier.padding(start = 10.dp, end = 10.dp, top = 6.dp, bottom = 2.dp)) {
                             ActionRow(
@@ -1419,6 +1528,34 @@ fun App(store: Store) {
                             }
                         }
 
+                        Row(Modifier.padding(start = 10.dp, end = 10.dp, top = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+                            BasicTextField(
+                                value = setQuery,
+                                onValueChange = { setQuery = it.take(30) },
+                                singleLine = true,
+                                textStyle = TextStyle(color = cs.onSurface, fontFamily = Mono, fontSize = 13.sp),
+                                cursorBrush = SolidColor(cs.primary),
+                                modifier = Modifier.weight(1f),
+                                decorationBox = { inner3 ->
+                                    Box(Modifier.border(1.dp, if (setQuery.isNotEmpty()) cs.primary else cs.outline, BtnShape)
+                                        .padding(horizontal = 10.dp, vertical = 7.dp)) {
+                                        if (setQuery.isEmpty()) Text("\u2315 Search settings", fontSize = 13.sp, color = cs.onSurfaceVariant)
+                                        inner3()
+                                    }
+                                }
+                            )
+                            if (setQuery.isNotEmpty()) MiniButton("X", cs.onSurfaceVariant) { setQuery = "" }
+                        }
+                        if (setQuery.isBlank()) Box(Modifier.padding(start = 10.dp, end = 10.dp, top = 6.dp)) {
+                            ChipRow(
+                                listOf("ALERTS", "SCANNING", "LIST", "DISPLAY", "SECURITY", "DATA", "ABOUT", "ALL"),
+                                setPage, { it }
+                            ) { setPage = it }
+                        } else {
+                            Text("Showing every setting that matches \"$setQuery\".", fontSize = 11.sp, color = cs.onSurfaceVariant,
+                                modifier = Modifier.padding(start = 10.dp, top = 4.dp))
+                        }
+                        if (pg("ALERTS")) {
                         GroupLabel("ALERT")
                         SettingToggle(
                             "SOUND", sound,
@@ -1448,6 +1585,8 @@ fun App(store: Store) {
                                 MiniButton("GRANT", vPad = 4.dp) { openOverlaySettings(ctx) }
                             }
                         }
+                        }
+                        if (pg("SCANNING")) {
                         GroupLabel("SCREEN")
                         SettingToggle(
                             "SCAN WITH SCREEN OFF", screenOffScan,
@@ -1477,6 +1616,20 @@ fun App(store: Store) {
                         SettingToggle("KEEP ON WHILE SCANNING", keepAwake) {
                             keepAwake = !keepAwake; store.keepAwakeOn = keepAwake
                         }
+                        }
+                        if (pg("DISPLAY")) {
+                        GroupLabel("DISPLAY")
+                        if (settingMatches("TEXT SIZE", "font", "bigger", "larger", "readable")) {
+                            Box(Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 4.dp)) {
+                                LabeledChips("TEXT SIZE", listOf(0, 1, 2), textSize, {
+                                    when (it) { 0 -> "NORMAL"; 1 -> "LARGE"; else -> "EXTRA LARGE" }
+                                }) { textSize = it; store.textSize = it }
+                            }
+                        }
+                        SettingToggle(
+                            "SESSION REPORT", reportOn,
+                            "A SUMMARY OF NEW DEVICE TYPES, RARE FINDS, MODELS AND XP AFTER EACH SCAN, WITH A SHARE BUTTON."
+                        ) { reportOn = !reportOn; store.sessionReportOn = reportOn }
                         SettingToggle(
                             "FULLSCREEN", fullscreen,
                             hint = "HIDES THE STATUS AND NAVIGATION BARS. SWIPE FROM THE SCREEN EDGE TO SEE THEM FOR A MOMENT. " +
@@ -1507,6 +1660,8 @@ fun App(store: Store) {
                             "GAME EFFECTS", gameFx,
                             "CONFETTI CELEBRATIONS FOR LEVEL-UPS, ACHIEVEMENTS, TITLES, QUESTS AND STREAKS, WITH SOUNDS"
                         ) { gameFx = !gameFx; store.gameFxOn = gameFx }
+                        }
+                        if (pg("SCANNING")) {
                         GroupLabel("START")
                         SettingToggle("SCAN WHEN APP OPENS", autoStart) {
                             autoStart = !autoStart; store.autoStartOn = autoStart
@@ -1531,6 +1686,8 @@ fun App(store: Store) {
                             "CLASSIC BLUETOOTH DISCOVERY", classicUi,
                             hint = "ALSO RUNS CLASSIC (BR/EDR) DISCOVERY NEXT TO THE BLE SCAN, TO LIST HEADSETS, SPEAKERS, CAR KITS, PHONES AND PCS THAT NEVER ADVERTISE OVER BLE. ROWS ARE TAGGED [BT]. USES MORE BATTERY AND CAN SLOW THE BLE SCAN A LITTLE. IN BURST MODE IT ONLY RUNS DURING SCAN WINDOWS (USE 15 S OR MORE). RESTART THE SCAN AFTER CHANGING."
                         ) { classicUi = !classicUi; store.classicOn = classicUi }
+                        }
+                        if (pg("LIST")) {
                         GroupLabel("LIST")
                         SettingToggle(
                             "SHOW EVERYTHING RAW", rawList,
@@ -1565,6 +1722,8 @@ fun App(store: Store) {
                             "ONE ROW PER NAME", onePerName,
                             hint = "ONLY THE STRONGEST DEVICE WHEN NAMES MATCH (\u2261N = N TOTAL)."
                         ) { onePerName = !onePerName; store.onePerNameOn = onePerName }
+                        }
+                        if (pg("ALERTS")) {
                         GroupLabel("NEW DEVICES")
                         SettingToggle(
                             "NEW-DEVICE SOUND", newSound,
@@ -1589,6 +1748,8 @@ fun App(store: Store) {
                             "SKIP ANONYMOUS RANDOM", skipAnon,
                             hint = "IGNORE UNNAMED RANDOM-ADDRESS DEVICES (FIND MY ETC.) THAT NEVER STOP APPEARING."
                         ) { skipAnon = !skipAnon; store.newSkipAnonOn = skipAnon }
+                        }
+                        if (pg("SECURITY")) {
                         GroupLabel("SECURITY")
                         SettingToggle(
                             "PAIRING CHECK", pairCheck,
@@ -1625,6 +1786,8 @@ fun App(store: Store) {
                                 }
                             }
                         }
+                        }
+                        if (pg("ALERTS")) {
                         GroupLabel("AUTO-ALERT")
                         SettingToggle(
                             "ALERT TIER", autoAlert,
@@ -1640,13 +1803,22 @@ fun App(store: Store) {
                             }
                             MiniButton("TEST ALERT (5S)", vPad = 4.dp) { testAlert(ctx, store) }
                         }
+                        }
+                        if (pg("ABOUT")) {
                         GroupLabel("ABOUT")
                         Box(Modifier.padding(horizontal = 10.dp, vertical = 4.dp)) {
                             ActionRow("TERMS OF USE", "READ THE TERMS OF RESPONSIBLE USE YOU ACCEPTED", cs.primary) {
                                 termsOpen = true
                             }
                         }
+                        Box(Modifier.padding(horizontal = 10.dp, vertical = 4.dp)) {
+                            ActionRow("REPLAY THE TOUR", "THE SHORT WALKTHROUGH SHOWN ON FIRST LAUNCH", cs.secondary) {
+                                tourOpen = true
+                            }
+                        }
+                        }
                         Spacer(Modifier.height(4.dp))
+                        if (pg("SCANNING") && settingMatches("Adapter", "usb", "radio", "firmware", "realtek")) {
                         SectionHeader(
                             "Adapter", adapterOpen, { adapterOpen = !adapterOpen },
                             summary = if (useUsb) "USB ${usbId.ifEmpty { "?" }}" else "PHONE"
@@ -1657,9 +1829,9 @@ fun App(store: Store) {
                                 verticalArrangement = Arrangement.spacedBy(4.dp)
                             ) {
                                 Text(
-                                    "WHICH RADIO SCANS. ANDROID ONLY EXPOSES ITS OWN BLUETOOTH, SO AN EXTERNAL " +
-                                        "USB ADAPTER IS DRIVEN DIRECTLY OVER USB (OTG).",
-                                    fontSize = 9.sp, color = cs.onSurfaceVariant
+                                    readable("WHICH RADIO SCANS. ANDROID ONLY EXPOSES ITS OWN BLUETOOTH, SO AN EXTERNAL " +
+                                        "USB ADAPTER IS DRIVEN DIRECTLY OVER USB (OTG)."),
+                                    fontSize = 11.sp, lineHeight = 14.sp, color = cs.onSurfaceVariant
                                 )
                                 val usbIds = (listOf("") + usbDevices.map { UsbAdapters.id(it) } + usbId).distinct()
                                 LabeledChips(
@@ -1701,14 +1873,16 @@ fun App(store: Store) {
                                     }
                                 }
                                 Text(
-                                    "REALTEK ADAPTERS (TP-LINK UB500 = RTL8761B) LOSE THEIR FIRMWARE WHEN UNPLUGGED, " +
+                                    readable("REALTEK ADAPTERS (TP-LINK UB500 = RTL8761B) LOSE THEIR FIRMWARE WHEN UNPLUGGED, " +
                                         "SO IT IS LOADED AT EACH SCAN START. IMPORT rtl8761bu_fw.bin (AND OPTIONALLY " +
                                         "rtl8761bu_config.bin) FROM /usr/lib/firmware/rtl_bt/ ON LINUX. IF THE FILES END " +
-                                        "IN .zst, RUN zstd -d ON THEM FIRST.",
-                                    fontSize = 9.sp, color = cs.onSurfaceVariant
+                                        "IN .zst, RUN zstd -d ON THEM FIRST."),
+                                    fontSize = 11.sp, lineHeight = 14.sp, color = cs.onSurfaceVariant
                                 )
                             }
                         }
+                        }
+                        if (pg("SCANNING") && settingMatches("Scan mode", "burst", "continuous", "battery")) {
                         SectionHeader(
                             "Scan mode", modeOpen, { modeOpen = !modeOpen },
                             summary = if (mode == ScanMode.BURST) "BURST ${scanSec}S/${pauseSec}S" else "CONTINUOUS"
@@ -1734,6 +1908,8 @@ fun App(store: Store) {
                                 }
                             }
                         }
+                        }
+                        if (pg("ALERTS") && settingMatches("Target list", "target", "watch", "pin", "mac")) {
                         val targetsLocked = pinSet && !targetsUnlocked
                         SectionHeader(
                             if (targetsLocked) "Target list \uD83D\uDD12" else "Target list (${watch.size})",
@@ -1760,8 +1936,8 @@ fun App(store: Store) {
                                     }
                                 }
                                 Text(
-                                    "NAME, MAC, PREFIX (00:25:DF), OR A RULE LIKE CID:004C, UUID:FE9F, MFG:004C:1005. ONE PER LINE OR COMMA-SEPARATED. TAP A SIGNAL > WATCH FOR... TO BUILD ONE FROM A REAL DEVICE.",
-                                    fontSize = 9.sp, color = cs.onSurfaceVariant
+                                    readable("NAME, MAC, PREFIX (00:25:DF), OR A RULE LIKE CID:004C, UUID:FE9F, MFG:004C:1005. ONE PER LINE OR COMMA-SEPARATED. TAP A SIGNAL > WATCH FOR... TO BUILD ONE FROM A REAL DEVICE."),
+                                    fontSize = 11.sp, lineHeight = 14.sp, color = cs.onSurfaceVariant
                                 )
                                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                                     BasicTextField(
@@ -1792,6 +1968,7 @@ fun App(store: Store) {
                                         color = if (inputError != null) cs.error else cs.onSurfaceVariant)
                                 }
                                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                                    MiniButton("PICK FROM SEEN", cs.secondary) { pickTargets = true }
                                     MiniButton("IMPORT") { importLauncher.launch(arrayOf("*/*")) }
                                     MiniButton("EXPORT") { exportLauncher.launch("signal-ops-targets.txt") }
                                 }
@@ -1815,6 +1992,8 @@ fun App(store: Store) {
                                 }
                             }
                         }
+                        }
+                        if (pg("LIST") && settingMatches("Device names", "name", "rename", "nickname")) {
                         SectionHeader("Device names (${nicks.size})", namesOpen, { namesOpen = !namesOpen })
                         if (namesOpen) {
                             Column(
@@ -1844,6 +2023,8 @@ fun App(store: Store) {
                                 }
                             }
                         }
+                        }
+                        if (pg("DATA") && settingMatches("App updates", "update", "version", "github")) {
                         SectionHeader(
                             "App updates", updatesOpen, { updatesOpen = !updatesOpen },
                             summary = "v" + remember { Updater.installedName(ctx) } +
@@ -1855,9 +2036,9 @@ fun App(store: Store) {
                                 verticalArrangement = Arrangement.spacedBy(4.dp)
                             ) {
                                 Text(
-                                    "UPDATES COME FROM THE OFFICIAL GITHUB RELEASES. THE APP DOWNLOADS THE NEW VERSION, " +
-                                        "CHECKS IT, AND ANDROID ASKS YOU TO CONFIRM. YOUR DATA AND SETTINGS ARE KEPT.",
-                                    fontSize = 9.sp, color = cs.onSurfaceVariant
+                                    readable("UPDATES COME FROM THE OFFICIAL GITHUB RELEASES. THE APP DOWNLOADS THE NEW VERSION, " +
+                                        "CHECKS IT, AND ANDROID ASKS YOU TO CONFIRM. YOUR DATA AND SETTINGS ARE KEPT."),
+                                    fontSize = 11.sp, lineHeight = 14.sp, color = cs.onSurfaceVariant
                                 )
                             }
                             SettingToggle(
@@ -1871,6 +2052,8 @@ fun App(store: Store) {
                                 UpdateControls(upd, showCheck = true)
                             }
                         }
+                        }
+                        if (pg("DATA") && settingMatches("Bluetooth DB", "vendor", "database", "export", "unidentified", "oui", "model")) {
                         SectionHeader(
                             "Bluetooth DB", vendorsOpen, { vendorsOpen = !vendorsOpen },
                             summary = if (vendorCount > 0) "BUILT-IN \u00B7 %,d OUI".format(vendorCount) else "LOADING..."
@@ -1902,9 +2085,9 @@ fun App(store: Store) {
                                 )
                                 val unknownCount = remember(devices) { devices.values.count { UnknownExport.isUnidentified(it) } }
                                 Text(
-                                    "UNIDENTIFIED THIS SESSION: $unknownCount. EXPORT SENDS THEIR ADVERT CLUES (NO FULL MAC " +
-                                        "ADDRESSES, PERSONAL NAMES REMOVED) SO NEW RULES CAN BE WRITTEN FOR THEM.",
-                                    fontSize = 9.sp, color = cs.onSurfaceVariant
+                                    readable("UNIDENTIFIED THIS SESSION: $unknownCount. EXPORT SENDS THEIR ADVERT CLUES (NO FULL MAC " +
+                                        "ADDRESSES, PERSONAL NAMES REMOVED) SO NEW RULES CAN BE WRITTEN FOR THEM."),
+                                    fontSize = 11.sp, lineHeight = 14.sp, color = cs.onSurfaceVariant
                                 )
                                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
                                     MiniButton("EXPORT UNIDENTIFIED ($unknownCount)", cs.tertiary) {
@@ -1913,10 +2096,10 @@ fun App(store: Store) {
                                     }
                                 }
                                 Text(
-                                    "RANDOMIZED ADDRESSES (MOST PHONES, WATCHES, TRACKERS) HAVE NO MAC ENTRY; THOSE ARE " +
+                                    readable("RANDOMIZED ADDRESSES (MOST PHONES, WATCHES, TRACKERS) HAVE NO MAC ENTRY; THOSE ARE " +
                                         "IDENTIFIED FROM THEIR COMPANY ID, SERVICE UUIDS AND DEVICE TYPE INSTEAD. " +
-                                        "OPTIONAL: UPDATE ONLINE OR IMPORT AN IEEE oui.csv / WIRESHARK manuf FILE FOR NEWER PREFIXES.",
-                                    fontSize = 9.sp, color = cs.onSurfaceVariant
+                                        "OPTIONAL: UPDATE ONLINE OR IMPORT AN IEEE oui.csv / WIRESHARK manuf FILE FOR NEWER PREFIXES."),
+                                    fontSize = 11.sp, lineHeight = 14.sp, color = cs.onSurfaceVariant
                                 )
                                 vendorStatus?.let { Text(it, fontSize = 10.sp, color = cs.secondary) }
                                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
@@ -1940,11 +2123,43 @@ fun App(store: Store) {
                                 }
                             }
                         }
+                        }
                     }
+                  }
                 }
             }
           }
         }
+
+        // ---- DEX and TRACKERS tabs, and the bottom navigation ----
+        if (tab == MainTab.DEX) TabPage("// SIGNAL DEX", fsTop, fx) { DexContent(dex) }
+        if (tab == MainTab.TRACKERS) TabPage("// TRACKERS", fsTop, fx) {
+            val mineCount = remember(mineTick, trackers) { TrackerWatch.mineCount }
+            TrackersContent(
+                trackerOn = trackerOn, locationOk = locOk, running = running, trackers = trackers, mineCount = mineCount,
+                onEnable = {
+                    trackerOn = true
+                    store.trackerOn = true
+                    if (!locOk) locLauncher.launch(arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION))
+                },
+                onGrantLocation = {
+                    locLauncher.launch(arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION))
+                },
+                onMine = { t -> TrackerWatch.markMine(store, t.key, t.address); mineTick++ },
+                onLocate = { t -> ScanBus.trackTarget.value = t.address; locatorOpen = true },
+                onClearMine = { TrackerWatch.clearMine(store); mineTick++ }
+            )
+        }
+        val flagged = trackers.count { it.level != TrackLevel.WATCHING }
+        MainNavBar(
+            tab,
+            buildMap {
+                if (dex.newCount > 0) put(MainTab.DEX, "${dex.newCount}")
+                if (trackerOn && trackers.isNotEmpty()) put(MainTab.TRACKERS, if (flagged > 0) "!$flagged" else "${trackers.size}")
+                if (upd.phase == UpdatePhase.AVAILABLE) put(MainTab.SETTINGS, "1")
+            },
+            Modifier.align(Alignment.BottomCenter)
+        ) { tab = it }
 
         if (activeAlert != null && flash) FlashingBorder()
         if (fx) activeAlert?.let { a -> TargetLock(a, a.label) }
@@ -2018,123 +2233,55 @@ fun App(store: Store) {
         crtEvent?.let { ev -> CrtPowerOverlay(ev, sound) { crtEvent = null } }
         if (curveFx) CurvedGlass()
 
-        // ---- tapped a signal: locate, connect or inspect ----
+        // ---- tapped a signal: the device detail screen ----
         picked?.let { p ->
             val d = p.d
-            val isTracked = d.address == trackTarget
-            val vend = if (Vendors.isLocal(d.address)) null else Vendors.lookup(d.address)
-            AlertDialog(
-                onDismissRequest = { picked = null },
-                containerColor = cs.surface,
-                shape = HudShape,
-                title = {
-                    Text(p.title, fontSize = 14.sp, fontWeight = FontWeight.Bold, color = cs.primary,
-                        maxLines = 2, overflow = TextOverflow.Ellipsis)
-                },
-                text = {
-                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                        Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                            Text(d.address, fontSize = 11.sp, color = cs.onSurfaceVariant)
-                            vend?.let { Text(it, fontSize = 11.sp, color = cs.onSurfaceVariant) }
-                            d.cls?.let { c -> Text(Classifier.tag(c).uppercase(), fontSize = 10.sp, color = cs.secondary) }
-                            if (d.transport and 2 != 0) {
-                                Text(
-                                    "CLASSIC BLUETOOTH" + (ClassicBt.text(d.cod)?.let { " \u00B7 $it" } ?: "") +
-                                        (if (d.transport == 3) " (ALSO HEARD AS BLE)" else " (NOT A BLE ADVERTISER)"),
-                                    fontSize = 10.sp, color = cs.secondary
-                                )
-                            }
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                SignalBars(d.rssi, cs.primary)
-                                Text("  ${d.rssi} DBM", fontSize = 10.sp, color = cs.onSurfaceVariant)
-                            }
-                            ScanBus.rawAds[d.address]?.sensor?.let { sr ->
-                                Text("${sr.kind}: ${sr.summary}", fontSize = 10.sp, color = cs.secondary)
-                            }
-                            nicks.nick(d.address)?.let { n ->
-                                Text("YOUR NAME: $n", fontSize = 10.sp, color = cs.secondary)
-                                d.name?.let { Text("ADVERTISED NAME: $it", fontSize = 10.sp, color = cs.onSurfaceVariant) }
-                            }
-                            if (p.count > 1) {
-                                Text("${p.count} SIMILAR UNNAMED DEVICES ARE GROUPED HERE. THESE ACTIONS USE THE STRONGEST ONE.",
-                                    fontSize = 9.sp, color = cs.onSurfaceVariant)
-                            }
-                            if (p.linked > 1) {
-                                Text("ROTATING ADDRESS: ${p.linked} ADDRESSES LINKED BY ITS ADVERTISING PATTERN. " +
-                                    "LOCATING FOLLOWS THE CHANGE.", fontSize = 9.sp, color = cs.secondary)
-                                ScanBus.identityAddrs[d.identity]?.take(6)?.forEach { a ->
-                                    Text(a, fontSize = 9.sp, fontFamily = Mono, color = cs.onSurfaceVariant)
-                                }
-                            }
-                            if (p.sameName > 0) {
-                                Text("${p.sameName} OTHER DEVICE(S) WITH THIS EXACT NAME ARE HIDDEN. SHOWING THE STRONGEST.",
-                                    fontSize = 9.sp, color = cs.onSurfaceVariant)
-                            }
-                            if (pairCheck && p.count == 1) {
-                                val pv = PairingCheck.assess(d, ScanBus.rawAds[d.address])
-                                Text(
-                                    when (pv.level) {
-                                        PairLevel.OPEN -> "PAIRING: OPEN"
-                                        PairLevel.LIKELY -> "PAIRING: JUST WORKS LIKELY (NO PIN OR CONFIRMATION)"
-                                        PairLevel.NONE -> "PAIRING: NO JUST-WORKS SIGN"
-                                    },
-                                    fontSize = 10.sp, fontWeight = FontWeight.Bold,
-                                    color = when (pv.level) {
-                                        PairLevel.OPEN -> AlertRed
-                                        PairLevel.LIKELY -> AlertAmber
-                                        PairLevel.NONE -> cs.onSurfaceVariant
-                                    },
-                                    modifier = Modifier.padding(top = 4.dp)
-                                )
-                                pv.reasons.forEach { Text("\u2022 $it", fontSize = 9.sp, color = cs.onSurfaceVariant) }
-                            }
-                            if (trackerOn && TrackerWatch.isTracker(d)) {
-                                trackers.firstOrNull { it.address == d.address }?.let { t ->
-                                    Text("TRACKER: ${t.level.name} FOR ${t.minutes}M", fontSize = 10.sp, fontWeight = FontWeight.Bold,
-                                        color = if (t.level == TrackLevel.FOLLOWING) AlertRed else AlertAmber)
-                                }
-                            }
-                        }
-                        ActionRow(
-                            if (isTracked) "STOP LOCATING" else "LOCATE", "HOT/COLD TRACKING", cs.secondary
-                        ) {
-                            ScanBus.trackTarget.value = if (isTracked) null else d.address
-                            picked = null
-                        }
-                        if (p.count == 1 && d.transport != 2) {
-                            ActionRow("CONNECT", "READ SERVICES AND IDENTITY OVER GATT", cs.primary) {
-                                picked = null
-                                startConnect(d.address)
-                            }
-                        }
-                        if (p.count == 1) {
-                            ActionRow(
-                                if (nicks.nick(d.address) != null) "RENAME" else "NAME IT",
-                                "GIVE THIS DEVICE YOUR OWN NAME (SAVED)", cs.secondary
-                            ) {
-                                renaming = p
-                                picked = null
-                            }
-                        }
-                        ActionRow("ADV DATA", "RAW PACKET, DECODED FIELDS, SENSOR READOUT", cs.tertiary) {
-                            adv = p
-                            picked = null
-                        }
-                        ActionRow("WATCH FOR...", "ADD A TARGET FROM THIS DEVICE: NAME, COMPANY ID, SERVICE UUID, DATA PATTERN", cs.primary) {
-                            watching = p
-                            picked = null
-                        }
-                        if (trackerOn && p.count == 1 && TrackerWatch.isTracker(d)) {
-                            ActionRow("MARK AS MINE", "IT IS MY OWN TRACKER: STOP WARNING ABOUT IT", cs.secondary) {
-                                TrackerWatch.markMine(store, if (d.identity != 0) "id${d.identity}" else d.address, d.address)
-                                picked = null
-                            }
-                        }
-                    }
-                },
-                confirmButton = {},
-                dismissButton = { MiniButton("CANCEL", cs.onSurfaceVariant) { picked = null } }
+            val single = p.count == 1
+            val n = if (single) d.name else null
+            val nameHits = if (n == null) emptyList() else watch.filter {
+                Matcher.isPlain(it) && !Matcher.isMac(it) && !Matcher.isMacPrefix(it) &&
+                    Matcher.kind(it) == "NAME" && Matcher.matches(it, n, d.address)
+            }
+            val macHit = if (!single) null else watch.firstOrNull { Matcher.isMac(it) && Matcher.matches(it, null, d.address) }
+            DeviceDetailScreen(
+                d = d, title = p.title, count = p.count, linked = p.linked, sameName = p.sameName,
+                nick = nicks.nick(d.address), isTracked = d.address == trackTarget, pinned = d.address in pinned,
+                pairCheck = pairCheck,
+                tracker = if (trackerOn) trackers.firstOrNull { it.address == d.address } else null,
+                nameTargetOn = nameHits.isNotEmpty(), macTargetOn = macHit != null, topPad = fsTop,
+                a = DeviceActions(
+                    onClose = { picked = null },
+                    onLocate = {
+                        if (d.address == trackTarget) ScanBus.trackTarget.value = null
+                        else { ScanBus.trackTarget.value = d.address; locatorOpen = true }
+                        picked = null
+                    },
+                    onConnect = if (single && d.transport != 2) ({ startConnect(d.address) }) else null,
+                    onRename = if (single) ({ renaming = p }) else null,
+                    onRaw = { adv = p },
+                    onWatchFor = { watching = p },
+                    onPin = if (single) ({ togglePin(d.address) }) else null,
+                    onNameTarget = if (n != null) ({ if (nameHits.isNotEmpty()) removeEntries(nameHits) else addEntry(n) }) else null,
+                    onMacTarget = if (single) ({ if (macHit != null) removeEntries(listOf(macHit)) else addEntry(d.address) }) else null,
+                    onMine = if (trackerOn && single && TrackerWatch.isTracker(d)) ({
+                        TrackerWatch.markMine(store, if (d.identity != 0) "id${d.identity}" else d.address, d.address)
+                        mineTick++
+                        picked = null
+                    }) else null
+                )
             )
+        }
+
+        // ---- full-screen locator ----
+        trackTarget?.let { addr ->
+            if (locatorOpen) {
+                LocatorScreen(
+                    title = nicks.nick(addr) ?: track?.name ?: devices[addr]?.name ?: devices[addr]?.cls?.label ?: addr,
+                    running = running, topPad = fsTop,
+                    onClose = { locatorOpen = false },
+                    onStop = { ScanBus.trackTarget.value = null; locatorOpen = false }
+                )
+            }
         }
 
         // ---- watch for: build a target from what this device advertises ----
@@ -2336,7 +2483,6 @@ fun App(store: Store) {
         }
         if (gameFx) GameCelebrations()
         if (loginOpen) LoginCalendarDialog(login) { loginOpen = false }
-        if (dexOpen) DexDialog(dex) { dexOpen = false; Dex.markViewed() }
         if (profileOpen) GameProfileDialog(game, daily, profileTab) { profileOpen = false; Game.markViewed() }
         if (termsOpen) TermsDialog { termsOpen = false }
         if (!termsOk) {
@@ -2352,6 +2498,13 @@ fun App(store: Store) {
                 onDecline = { exitApp() }
             )
         } else if (!booted) BootSequence { booted = true }
+        if (tourOpen && termsOk && booted) TourDialog { tourOpen = false; store.tourDone = true }
+        report?.let { r -> SessionReportDialog(r, onShare = { shareText(ctx, r.shareText()) }, onDismiss = { report = null }) }
+        if (pickTargets) PickTargetsDialog(
+            devices.values, nicks, watch.toList(),
+            onAddName = { addEntry(it) }, onAddMac = { addEntry(it) }
+        ) { pickTargets = false }
+    }
     }
 }
 
@@ -2453,8 +2606,9 @@ fun MiniButton(
 /** Small group label used between blocks of settings. */
 @Composable
 fun GroupLabel(text: String) {
+    if (LocalSettingsQuery.current.isNotBlank()) return
     Text(
-        text, fontSize = 9.sp, letterSpacing = 1.sp, color = MaterialTheme.colorScheme.secondary,
+        text, fontSize = 10.sp, letterSpacing = 1.sp, color = MaterialTheme.colorScheme.secondary,
         modifier = Modifier.padding(start = 10.dp, top = 8.dp, bottom = 1.dp)
     )
 }
@@ -2480,21 +2634,36 @@ fun MiniSwitch(on: Boolean) {
     }
 }
 
-/** One compact settings line: label (and optional one-line hint) on the left, switch on the right. */
+/**
+ * One settings line: label on the left, switch on the right. Short hints show under the label; long ones open with
+ * the (i) button (all hints open while searching). Hides itself when it doesn't match the Settings search.
+ */
 @Composable
 fun SettingToggle(label: String, on: Boolean, hint: String? = null, onToggle: () -> Unit) {
+    if (!settingMatches(label, hint)) return
+    val searching = LocalSettingsQuery.current.isNotBlank()
+    var open by remember(label) { mutableStateOf(false) }
+    val longHint = hint != null && hint.length > 80
+    val showHint = hint != null && (!longHint || open || searching)
     Row(
         Modifier
             .fillMaxWidth()
             .toggleable(value = on, role = Role.Switch, onValueChange = { onToggle() })
-            .padding(horizontal = 10.dp, vertical = 5.dp),
+            .padding(horizontal = 10.dp, vertical = 6.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Column(Modifier.weight(1f).padding(end = 10.dp)) {
-            Text(label, fontSize = 11.sp, letterSpacing = 0.5.sp)
-            if (hint != null) {
-                Text(hint, fontSize = 8.sp, lineHeight = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Column(Modifier.weight(1f).padding(end = 6.dp)) {
+            Text(label, fontSize = 12.sp, letterSpacing = 0.5.sp)
+            if (showHint) {
+                Text(readable(hint!!), fontSize = 11.sp, lineHeight = 14.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
+        }
+        if (longHint && !searching) {
+            Text(
+                if (open) "\u24D8\u25B4" else "\u24D8", fontSize = 14.sp,
+                color = if (open) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.clickable { open = !open }.padding(horizontal = 8.dp, vertical = 4.dp)
+            )
         }
         MiniSwitch(on)
     }

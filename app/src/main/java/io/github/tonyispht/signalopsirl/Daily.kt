@@ -36,7 +36,13 @@ data class DailyStats(
     val named: Int = 0,
     val idents: Int = 0,
     val sensors: Int = 0,
-    val scanMin: Int = 0
+    val scanMin: Int = 0,
+    /** Exact product models identified (Fast Pair, AirPods/Beats, Galaxy Buds, Swift Pair names). */
+    val models: Int = 0,
+    /** Smart-home devices found. */
+    val home: Int = 0,
+    /** Item trackers found. */
+    val trackers: Int = 0
 )
 
 class QuestDef(
@@ -90,7 +96,9 @@ object Daily {
             q("patrol", "ON PATROL", "Scan for 10 minutes today.", 0, 10, 40) { it.scanMin },
             q("kinds3", "VARIETY PACK", "Identify 3 kinds of device today.", 0, 3, 40) { it.kinds },
             q("label", "LABEL MAKER", "Give a device your own name today.", 0, 1, 40) { it.named },
-            q("fox1", "QUICK TRACK", "Track a device until it is stronger than -50 dBm today.", 0, 1, 40) { it.locates }
+            q("fox1", "QUICK TRACK", "Track a device until it is stronger than -50 dBm today.", 0, 1, 40) { it.locates },
+            q("model1", "MODEL SPOTTER", "Identify an exact earbud, speaker or accessory model today.", 0, 1, 40) { it.models },
+            q("tag2", "TAG WATCH", "Find 2 item trackers today.", 0, 2, 40) { it.trackers }
         ),
         listOf(
             q("net", "WIDE NET", "Find 40 different devices today.", 1, 40, 80) { it.devices },
@@ -98,7 +106,9 @@ object Daily {
             q("kinds6", "FIELD NOTES", "Identify 6 kinds of device today.", 1, 6, 80) { it.kinds },
             q("fox2", "DOUBLE TRACK", "Locate 2 different devices today.", 1, 2, 80) { it.locates },
             q("sens2", "SENSOR SWEEP", "Decode 2 different sensors today.", 1, 2, 80) { it.sensors },
-            q("hunch", "HUNCH", "Find a POSSIBLE-tier device today.", 1, 1, 80) { it.possible }
+            q("hunch", "HUNCH", "Find a POSSIBLE-tier device today.", 1, 1, 80) { it.possible },
+            q("model3", "AUDIOPHILE", "Identify 3 exact earbud, speaker or accessory models today.", 1, 3, 80) { it.models },
+            q("home3", "SMART HOME", "Find 3 smart-home devices today.", 1, 3, 80) { it.home }
         ),
         listOf(
             q("drag", "DRAGNET", "Find 100 different devices today.", 2, 100, 150) { it.devices },
@@ -106,7 +116,9 @@ object Daily {
             q("lock", "TARGET LOCK", "Find an ALERT-tier device today.", 2, 1, 150) { it.alerts },
             q("bull", "BULLSEYE", "Match a device on your target list today.", 2, 1, 150) { it.watch },
             q("kinds10", "ENCYCLOPEDIA", "Identify 10 kinds of device today.", 2, 10, 150) { it.kinds },
-            q("fox3", "TRIPLE HUNT", "Locate 3 different devices today.", 2, 3, 150) { it.locates }
+            q("fox3", "TRIPLE HUNT", "Locate 3 different devices today.", 2, 3, 150) { it.locates },
+            q("sens4", "WEATHER STATION", "Decode 4 different sensors today.", 2, 4, 150) { it.sensors },
+            q("model6", "GEAR COLLECTOR", "Identify 6 exact earbud, speaker or accessory models today.", 2, 6, 150) { it.models }
         )
     )
 
@@ -142,6 +154,9 @@ object Daily {
     private val nameS = HashSet<String>()
     private val identS = HashSet<String>()
     private val sensS = HashSet<String>()
+    private val modelS = HashSet<String>()
+    private val homeS = HashSet<String>()
+    private val trackS = HashSet<String>()
     private val newLines = ArrayList<String>()
     private var fileDay = -1L
 
@@ -202,6 +217,9 @@ object Daily {
             'n' -> nameS.add(v)
             'i' -> identS.add(v)
             's' -> sensS.add(v)
+            'm' -> modelS.add(v)
+            'h' -> homeS.add(v)
+            't' -> trackS.add(v)
         }
     }
 
@@ -261,7 +279,7 @@ object Daily {
      * A device was heard. [key] is the same fair-counting key the game uses (null when the device does not
      * count), [cat] its identified kind, [tier] its tier. Returns true when today's totals changed.
      */
-    fun onDevice(key: String?, cat: String?, tier: Tier?, matched: Boolean): Boolean {
+    fun onDevice(key: String?, cat: String?, tier: Tier?, matched: Boolean, model: String? = null, devKey: String? = null): Boolean {
         return synchronized(Game) {
             if (!loaded) return@synchronized false
             var ch = false
@@ -275,6 +293,11 @@ object Daily {
                 if (matched && addTo('W', watchS, key)) ch = true
             }
             if (cat != null && addTo('k', kindsS, cat)) ch = true
+            // Models count once per model name; smart-home and trackers once per device (any address kind).
+            if (model != null && addTo('m', modelS, model.take(60))) ch = true
+            val dk = key ?: devKey
+            if (dk != null && cat == "smart_iot" && addTo('h', homeS, dk)) ch = true
+            if (dk != null && cat == "trackers_valuables" && addTo('t', trackS, dk)) ch = true
             if (ch) onChange()
             ch
         }
@@ -318,7 +341,7 @@ object Daily {
                     val sb = StringBuilder("#$day\n")
                     dump(sb, 'd', devs); dump(sb, 'A', alertS); dump(sb, 'P', possS); dump(sb, 'W', watchS)
                     dump(sb, 'k', kindsS); dump(sb, 'l', locS); dump(sb, 'n', nameS); dump(sb, 'i', identS)
-                    dump(sb, 's', sensS)
+                    dump(sb, 's', sensS); dump(sb, 'm', modelS); dump(sb, 'h', homeS); dump(sb, 't', trackS)
                     f.writeText(sb.toString())
                     fileDay = day
                 } else if (newLines.isNotEmpty()) {
@@ -373,6 +396,7 @@ object Daily {
         done.clear()
         devs.clear(); alertS.clear(); possS.clear(); watchS.clear(); kindsS.clear()
         locS.clear(); nameS.clear(); identS.clear(); sensS.clear()
+        modelS.clear(); homeS.clear(); trackS.clear()
         newLines.clear()
         counted = false
         scanMs = 0L
@@ -383,7 +407,8 @@ object Daily {
 
     private fun stats() = DailyStats(
         devs.size, kindsS.size, possS.size, alertS.size, watchS.size, locS.size,
-        nameS.size, identS.size, sensS.size, (scanMs / 60_000L).toInt()
+        nameS.size, identS.size, sensS.size, (scanMs / 60_000L).toInt(),
+        modelS.size, homeS.size, trackS.size
     )
 
     private fun pick(d: Long, tier: Int): QuestDef {

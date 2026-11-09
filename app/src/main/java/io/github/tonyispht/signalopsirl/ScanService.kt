@@ -43,6 +43,7 @@ class ScanService : Service() {
     companion object {
         const val ACTION_START = "io.github.tonyispht.signalopsirl.START"
         const val ACTION_STOP = "io.github.tonyispht.signalopsirl.STOP"
+        const val ACTION_MUTE = "io.github.tonyispht.signalopsirl.MUTE"
         private const val CH_STATUS = "status"
         private const val CH_ALERT = "alerts"
         private const val NOTIF_STATUS = 1
@@ -226,6 +227,11 @@ class ScanService : Service() {
             stopSelf()
             return START_NOT_STICKY
         }
+        if (intent?.action == ACTION_MUTE) {
+            ScanBus.alertsMuted.value = !ScanBus.alertsMuted.value
+            updateStatus()
+            return START_STICKY
+        }
         watch = store.loadWatchlist()
         if (store.alertNewOn) learnUntil = System.currentTimeMillis() + LEARN_MS
         // Location access in the background needs the service to be declared as a location service too.
@@ -246,6 +252,7 @@ class ScanService : Service() {
     }
 
     override fun onDestroy() {
+        ScanBus.alertsMuted.value = false
         store.prefs.unregisterOnSharedPreferenceChangeListener(prefListener)
         runCatching { (getSystemService(Context.LOCATION_SERVICE) as? LocationManager)?.removeUpdates(locListener) }
         locOn = false
@@ -785,7 +792,10 @@ class ScanService : Service() {
         else AdDecoder.sensor(packets, name) ?: prev?.takeIf { now - it.time < 60_000 }?.sensor
         val tokens = if (same && prev != null) prev.tokens else AdDecoder.tokens(packets)
         ScanBus.rawAds[a.address] = RawAd(packets, now, prev?.first ?: now, (prev?.count ?: 0) + 1, sensor, tokens)
-        if (sensor != null) Game.onSensor(a.address)
+        if (sensor != null) {
+            Game.onSensor(a.address)
+            ScanBus.noteSensor(a.address, now, sensor)
+        }
     }
 
     /** Does any target (name, MAC, prefix, company ID, UUID, byte pattern...) match this device right now? */
@@ -908,6 +918,7 @@ class ScanService : Service() {
 
         devs[addr] = dev
         devsDirty = true
+        ScanBus.noteRssi(addr, now, a.rssi)
         Dex.onSeen(dev)   // before the game, so a type it already counted earlier is not announced again
         Game.onDevice(addr, name, cls, hit, Vendors.isLocal(addr))
 
@@ -958,7 +969,7 @@ class ScanService : Service() {
         if (alerted) return // a target / tier alert already made noise for this device
         if (store.alertNewOn && now >= learnUntil) {
             fireAlert(d, isNew = true)
-        } else if (store.soundOn && store.newSoundOn && now - lastNewSound >= NEW_SOUND_GAP_MS) {
+        } else if (store.soundOn && store.newSoundOn && !ScanBus.alertsMuted.value && now - lastNewSound >= NEW_SOUND_GAP_MS) {
             lastNewSound = now
             AlertEffects.playNewDevice(store.newSoundType)
         }
@@ -1011,6 +1022,7 @@ class ScanService : Service() {
             publishDevices()
             expireSpeed(System.currentTimeMillis())
             if (store.trackerOn) TrackerWatch.publish(System.currentTimeMillis())
+            refreshStatusCounts()
             Game.tickScan(ScanBus.phase.value == Phase.SCANNING, System.currentTimeMillis())
             Game.flush()
             handler.postDelayed(this, 300)
@@ -1161,9 +1173,11 @@ class ScanService : Service() {
     private fun fireAlert(d: SeenDevice, isNew: Boolean = false, tag: String? = null, title: String? = null) {
         val base = ScanBus.nicknames[d.address.uppercase()] ?: d.name ?: d.cls?.label ?: d.address
         val label = if (tag != null) "$tag: $base" else if (isNew) "NEW: $base" else base
+        sessionAlerts++
         ScanBus.alerts.tryEmit(AlertEvent(label, d.address, d.rssi, d.lastSeen))
-        if (store.soundOn) AlertEffects.playSound(store.alertSoundType)
-        if (store.vibrateOn) AlertEffects.vibrate(this)
+        val muted = ScanBus.alertsMuted.value
+        if (store.soundOn && !muted) AlertEffects.playSound(store.alertSoundType)
+        if (store.vibrateOn && !muted) AlertEffects.vibrate(this)
         if (store.overlayOn && !ScanBus.appVisible && Settings.canDrawOverlays(this)) {
             OverlayManager.show(applicationContext)
         }
@@ -1206,6 +1220,34 @@ class ScanService : Service() {
         else -> "Burst scan: waiting for next burst"
     }
 
+    /** "42 devices · 2 trackers · 3 alerts", for the status notification. */
+    private fun countsText(): String {
+        val n = ScanBus.devices.value.size
+        val tr = if (store.trackerOn) TrackerWatch.status.value.size else 0
+        return buildString {
+            append("$n device").append(if (n == 1) "" else "s")
+            if (tr > 0) append(" \u00B7 $tr tracker").append(if (tr == 1) "" else "s")
+            if (sessionAlerts > 0) append(" \u00B7 $sessionAlerts alert").append(if (sessionAlerts == 1) "" else "s")
+            if (ScanBus.alertsMuted.value) append(" \u00B7 muted")
+        }
+    }
+
+    private var sessionAlerts = 0
+    private var lastCounts = ""
+    private var lastCountsAt = 0L
+
+    /** Keeps the live counts in the notification current (at most every 5 s, only when they change). */
+    private fun refreshStatusCounts() {
+        val now = System.currentTimeMillis()
+        if (now - lastCountsAt < 5_000L) return
+        lastCountsAt = now
+        val c = countsText()
+        if (c != lastCounts) {
+            lastCounts = c
+            updateStatus()
+        }
+    }
+
     private fun statusNotification(text: String): Notification {
         val open = PendingIntent.getActivity(
             this, 0,
@@ -1217,11 +1259,18 @@ class ScanService : Service() {
             Intent(this, ScanService::class.java).setAction(ACTION_STOP),
             PendingIntent.FLAG_IMMUTABLE
         )
+        val mute = PendingIntent.getService(
+            this, 2,
+            Intent(this, ScanService::class.java).setAction(ACTION_MUTE),
+            PendingIntent.FLAG_IMMUTABLE
+        )
         return NotificationCompat.Builder(this, CH_STATUS)
             .setSmallIcon(android.R.drawable.stat_sys_data_bluetooth)
-            .setContentTitle("Signal OPS IRL")
-            .setContentText(text)
+            .setContentTitle("Signal OPS IRL \u00B7 $text")
+            .setContentText(countsText())
             .setContentIntent(open)
+            .setOnlyAlertOnce(true)
+            .addAction(0, if (ScanBus.alertsMuted.value) "Unmute" else "Mute", mute)
             .addAction(0, "Stop", stop)
             .setOngoing(true)
             .build()

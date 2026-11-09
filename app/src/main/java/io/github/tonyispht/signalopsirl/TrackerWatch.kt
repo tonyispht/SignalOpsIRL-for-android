@@ -17,7 +17,11 @@ data class TrackerStatus(
     /** How far you have moved (farthest point from where it was first heard), in metres; -1 = no location. */
     val meters: Int,
     val rssi: Int,
-    val lastSeen: Long
+    val lastSeen: Long,
+    /** First time it was heard (ms). */
+    val firstSeen: Long = 0L,
+    /** The minutes (epoch ms / 60 000) in which it was heard, for the sighting timeline. */
+    val minuteMarks: List<Long> = emptyList()
 )
 
 /**
@@ -90,6 +94,15 @@ object TrackerWatch {
     fun hasRecentFix(now: Long) = fix != null && now - fixAt <= FIX_MAX_AGE_MS
 
     fun isMine(addr: String, key: String) = addr in mine || key in mine
+
+    /** Everything marked as the user's own (addresses and linked-device keys). */
+    val mineCount: Int get() = mine.count { !it.startsWith("id") }
+
+    /** Forgets all "mine" marks so those trackers are watched again. */
+    fun clearMine(store: Store) {
+        mine.clear()
+        store.prefs.edit().putString(KEY_MINE, "[]").apply()
+    }
 
     /** Marks a tracker as the user's own so it never raises a warning. */
     fun markMine(store: Store, key: String, address: String) {
@@ -171,7 +184,8 @@ object TrackerWatch {
             .map {
                 TrackerStatus(
                     it.key, it.address, it.label, it.level, ((it.last - it.first) / 60_000L).toInt(),
-                    if (it.locSeen) it.disp.toInt() else -1, it.rssi.toInt(), it.last
+                    if (it.locSeen) it.disp.toInt() else -1, it.rssi.toInt(), it.last,
+                    it.first, it.minutes.sorted()
                 )
             }
             .sortedWith(compareByDescending<TrackerStatus> { it.level }.thenByDescending { it.minutes })

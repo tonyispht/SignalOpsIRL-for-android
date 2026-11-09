@@ -4,8 +4,12 @@ plugins {
 }
 
 // Bump both for every release. The release tag must be "v" + versionName (the workflow checks this).
-val appVersionCode = 131
-val appVersionName = "1.3.1"
+val appVersionCode = 140
+val appVersionName = "1.4.0"
+
+// Test builds (the workflow's manual "Run workflow" button) are numbered one below the release, so the public
+// release still installs over them through the in-app updater: e.g. 139 / "1.4.0-test.42".
+val testBuild: String? = System.getenv("TEST_BUILD")
 
 android {
     namespace = "io.github.tonyispht.signalopsirl"
@@ -15,8 +19,8 @@ android {
         applicationId = "io.github.tonyispht.signalopsirl"
         minSdk = 26
         targetSdk = 34
-        versionCode = appVersionCode
-        versionName = appVersionName
+        versionCode = if (testBuild != null) appVersionCode - 1 else appVersionCode
+        versionName = if (testBuild != null) "$appVersionName-test.$testBuild" else appVersionName
     }
 
     // Permanent release key. Supplied by CI from repository secrets; never commit the keystore.

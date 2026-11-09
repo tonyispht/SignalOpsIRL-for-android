@@ -36,6 +36,12 @@ jobs:
           # The version lives in app/build.gradle.kts (appVersionCode / appVersionName).
           CODE=$(sed -nE 's/^val appVersionCode = ([0-9]+).*/\1/p' app/build.gradle.kts)
           NAME=$(sed -nE 's/^val appVersionName = "([^"]+)".*/\1/p' app/build.gradle.kts)
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            # Test build: one below the release, so the real release later updates over it in the app.
+            CODE=$((CODE - 1))
+            NAME="$NAME-test.${GITHUB_RUN_NUMBER}"
+            echo "TEST_BUILD=${GITHUB_RUN_NUMBER}" >> "$GITHUB_ENV"
+          fi
           echo "VERSION_CODE=$CODE" >> "$GITHUB_ENV"
           echo "VERSION_NAME=$NAME" >> "$GITHUB_ENV"
           if [[ "${{ github.event_name }}" == "release" ]]; then
@@ -45,6 +51,8 @@ jobs:
               exit 1
             fi
             echo "LABEL=$TAG" >> "$GITHUB_ENV"
+          elif [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            echo "LABEL=v$NAME" >> "$GITHUB_ENV"
           else
             echo "LABEL=build-${GITHUB_RUN_NUMBER}" >> "$GITHUB_ENV"
           fi

@@ -24,7 +24,9 @@ class SignalRows(
     /** Rows dropped by the NEW filter. */
     val filteredNew: Int = 0,
     /** Rows cut off because the list is limited in length. */
-    val cut: Int = 0
+    val cut: Int = 0,
+    /** Devices left out by the search / category / tier filter. */
+    val searched: Int = 0
 ) {
     /** Everything in the scanner that has no row of its own right now. */
     val hidden: Int get() = (all - rows.size).coerceAtLeast(0)
@@ -46,7 +48,13 @@ fun buildSignalRows(
     /** > 0 = only devices first heard within this many ms, newest first. 0 = everything, strongest first. */
     newWithinMs: Long = 0L,
     /** True = unnamed devices of the same kind collapse into one "x N" row (old behaviour). False = one row each. */
-    groupAnon: Boolean = false
+    groupAnon: Boolean = false,
+    /** Search / category / tier filter from the Signals bar; null = everything. */
+    filter: ((SeenDevice) -> Boolean)? = null,
+    /** 0 = strongest first, 1 = newest first, 2 = name A-Z. */
+    sort: Int = 0,
+    /** Pinned addresses, always listed first. */
+    pinned: Set<String> = emptySet()
 ): SignalRows {
     val devices: List<SeenDevice> = if (mergeRotating) {
         all.groupBy { if (it.identity != 0) "i${it.identity}" else it.address }
@@ -56,8 +64,10 @@ fun buildSignalRows(
                 if (g.size == 1) top else top.copy(firstSeen = g.minOf { it.firstSeen })
             }
     } else all.toList()
+    val filteredAll = if (filter != null) devices.filter(filter) else devices
+    val searchedAway = devices.size - filteredAll.size
 
-    val (mine, others) = devices.partition { nicks.nick(it.address) != null }
+    val (mine, others) = filteredAll.partition { nicks.nick(it.address) != null }
     val (anon, named) =
         if (groupAnon) others.partition { it.name == null && it.cls?.anon == true }
         else Pair(emptyList<SeenDevice>(), others)
@@ -90,16 +100,19 @@ fun buildSignalRows(
         named.forEach { rows.add(ShownDevice(it, 1, 0, it.linked)) }
     }
 
-    val sorted = if (newWithinMs > 0L) {
-        rows.filter { it.d.firstSeen > 0L && now - it.d.firstSeen <= newWithinMs }
-            .sortedWith(compareByDescending<ShownDevice> { it.d.firstSeen }.thenBy { it.d.address })
-    } else {
-        rows.sortedWith(compareByDescending<ShownDevice> { it.d.rssi }.thenBy { it.d.address })
+    val pin = compareByDescending<ShownDevice> { it.count == 1 && it.d.address in pinned }
+    val order = when {
+        newWithinMs > 0L || sort == 1 -> pin.thenByDescending { it.d.firstSeen }.thenBy { it.d.address }
+        sort == 2 -> pin.thenBy { (nicks.nick(it.d.address) ?: it.d.name ?: it.d.cls?.label ?: "\uFFFF").lowercase() }
+            .thenBy { it.d.address }
+        else -> pin.thenByDescending { it.d.rssi }.thenBy { it.d.address }
     }
+    val sorted = (if (newWithinMs > 0L) rows.filter { it.d.firstSeen > 0L && now - it.d.firstSeen <= newWithinMs } else rows)
+        .sortedWith(order)
     val shown = sorted.take(limit)
     return SignalRows(
         shown, sorted.size, all.size, all.size - devices.size, groupedAway, sameNameAway,
-        rows.size - sorted.size, sorted.size - shown.size
+        rows.size - sorted.size, sorted.size - shown.size, searchedAway
     )
 }
 

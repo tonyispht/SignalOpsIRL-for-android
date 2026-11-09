@@ -100,8 +100,51 @@ object ScanBus {
     /** True while classic discovery is running. */
     @Volatile var classicActive = false
 
+    // ---- histories for the device detail screen and the sensor graphs (memory only) ----------
+
+    /** Recent signal strength per address: (time ms, rssi), at most one sample a second, last 3 minutes. */
+    val rssiHist = ConcurrentHashMap<String, ArrayDeque<Pair<Long, Int>>>()
+
+    /** Alerts silenced from the notification's MUTE button (this scan session only; sound and vibration). */
+    val alertsMuted = MutableStateFlow(false)
+
+    fun noteRssi(addr: String, now: Long, rssi: Int) {
+        val q = rssiHist.getOrPut(addr) { ArrayDeque() }
+        synchronized(q) {
+            val last = q.lastOrNull()
+            if (last != null && now - last.first < 1_000L) return
+            q.addLast(now to rssi)
+            while (q.isNotEmpty() && now - q.first().first > 180_000L) q.removeFirst()
+        }
+        if (rssiHist.size > 600) rssiHist.keys.take(100).forEach { rssiHist.remove(it) }
+    }
+
+    fun rssiSeries(addr: String): List<Pair<Long, Int>> = rssiHist[addr]?.let { synchronized(it) { it.toList() } } ?: emptyList()
+
+    /** Sensor readings per address: (time ms, temperature °F or NaN, humidity % or NaN), every 30 s, last 2 hours. */
+    val sensorHist = ConcurrentHashMap<String, ArrayDeque<Triple<Long, Double, Double>>>()
+
+    private val NUM = Regex("-?\\d+(\\.\\d+)?")
+
+    fun noteSensor(addr: String, now: Long, s: SensorReading) {
+        val t = s.values.firstOrNull { it.first == "TEMP" }?.second?.let { NUM.find(it)?.value?.toDoubleOrNull() } ?: Double.NaN
+        val h = s.values.firstOrNull { it.first == "HUM" }?.second?.let { NUM.find(it)?.value?.toDoubleOrNull() } ?: Double.NaN
+        if (t.isNaN() && h.isNaN()) return
+        val q = sensorHist.getOrPut(addr) { ArrayDeque() }
+        synchronized(q) {
+            val last = q.lastOrNull()
+            if (last != null && now - last.first < 30_000L) return
+            q.addLast(Triple(now, t, h))
+            while (q.isNotEmpty() && now - q.first().first > 7_200_000L) q.removeFirst()
+        }
+    }
+
+    fun sensorSeries(addr: String): List<Triple<Long, Double, Double>> =
+        sensorHist[addr]?.let { synchronized(it) { it.toList() } } ?: emptyList()
+
     fun clearDevices() {
         pruned.set(0)
+        rssiHist.clear()
         classicAddrs.clear()
         clearGen++
         bleDevices.clear()
@@ -333,6 +376,26 @@ class Store(context: Context) {
     var termsAcceptedVersion: Int
         get() = prefs.getInt("termsVersion", 0)
         set(v) = prefs.edit().putInt("termsVersion", v).apply()
+
+    /** Pinned devices (addresses), shown at the top of the Signals list. */
+    var pinned: Set<String>
+        get() = prefs.getStringSet("pinned", emptySet())?.toSet() ?: emptySet()
+        set(v) = prefs.edit().putStringSet("pinned", v).apply()
+
+    /** Text size: 0 = normal, 1 = large, 2 = extra large. */
+    var textSize: Int
+        get() = prefs.getInt("textSize", 0)
+        set(v) = prefs.edit().putInt("textSize", v).apply()
+
+    /** The first-run tour has been shown. */
+    var tourDone: Boolean
+        get() = prefs.getBoolean("tourDone", false)
+        set(v) = prefs.edit().putBoolean("tourDone", v).apply()
+
+    /** Show the session report after a scan stops. */
+    var sessionReportOn: Boolean
+        get() = prefs.getBoolean("sessionReport", true)
+        set(v) = prefs.edit().putBoolean("sessionReport", v).apply()
 
     /** Check GitHub for a newer release when the app opens (at most every few hours). On by default. */
     var autoUpdateCheckOn: Boolean
