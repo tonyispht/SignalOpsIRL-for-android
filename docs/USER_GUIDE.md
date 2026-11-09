@@ -12,6 +12,31 @@ Open this folder in Android Studio (Koala or newer, JDK 17). Let Gradle sync, pl
 - Scan failures retry (continuous mode every 10 s), and turning Bluetooth off stops the scan and shows an error.
 - The Signals list refreshes about 3 times a second rather than on every advertisement.
 
+## Layout (1.4)
+- **Tabs:** the bar at the bottom switches between **SCAN** (radar, start/stop, Signals), **DEX** (the Signal Dex),
+  **TRACKERS** (trackers heard around you) and **SETTINGS**. Badges show new Dex entries, flagged trackers and updates.
+- **First-run tour:** a short walkthrough on first launch; replay it in **Settings > ABOUT**.
+- **Signals bar:** search by name, maker, type or address; **FILTERS** opens: new-only, sort (signal, newest, name), and
+  chips for pinned, named, alert / possible tier and every device type in the list. Pinned devices (\u2605) stay at the top.
+- **Device detail:** tapping a signal opens one screen with what it is and why, who made it, a live signal graph of
+  the last 3 minutes, all its details, and every action: LOCATE, CONNECT, NAME IT, PIN, + NAME / + MAC TARGET,
+  WATCH FOR..., RAW DATA and MARK AS MINE.
+- **Locator:** LOCATE opens a full-screen hot/cold gauge with the Geiger-style ticks; **FULL SCREEN** on the tracker card
+  opens it again.
+- **Trackers tab:** each tracker shows how long it has been around, how far you moved, and a timeline of the minutes it
+  was heard in the last hour, with LOCATE and MINE. A tracker alert banner also has MINE and VIEW.
+- **Signal Dex:** every device type has a rarity (common to legendary) with progress per rarity, and locked types show
+  example device names to look for.
+- **Daily quests:** new quests for exact earbud/speaker models, smart-home devices, trackers and sensors.
+- **Session report:** after STANDBY (scans of 20 s or more) a report of new types, rare finds, models and XP, with SHARE.
+  Turn it off in **Settings > DISPLAY**.
+- **Notification:** while scanning it shows live counts (devices, trackers, alerts) with **Mute** (silences alert sounds
+  and vibration for this scan) and **Stop**.
+- **Targets:** **PICK FROM SEEN** in the target list adds names or addresses from devices already heard.
+- **Sensors:** each decoded sensor shows a small temperature (or humidity) graph of the last 2 hours.
+- **Settings:** split into pages (ALERTS, SCANNING, LIST, DISPLAY, SECURITY, DATA, ABOUT, ALL) with a search box. Long
+  explanations open with the \u24D8 button. **TEXT SIZE** (Settings > DISPLAY) makes all text larger.
+
 ## Terms of responsible use
 The first time the app opens it shows the **Terms of Responsible Use** before anything else. Nothing scans (and the boot
 sequence, auto-start scan and login calendar do not run) until you tick **I have read and agree to these terms** and press

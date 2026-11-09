@@ -94,6 +94,9 @@ object Classifier {
     /** Every category of the loaded config (plus the built-in ones), sorted by title. Empty until a config is loaded. */
     fun categories(): List<CategoryInfo> = db?.categoryList() ?: emptyList()
 
+    /** A few example device names the config lists for a category (hints for locked Dex pages). */
+    fun examples(categoryKey: String, n: Int = 3): List<String> = db?.examples(categoryKey, n) ?: emptyList()
+
     /** One-line description of what is loaded, for the UI. */
     fun summary(): String? = db?.summary
 
@@ -574,6 +577,12 @@ private class Db(root: JSONObject) {
     // ---- helpers -------------------------------------------------------------------------------
 
     fun companyName(id: Int): String? = companyNames[id]
+
+    fun examples(key: String, n: Int): List<String> {
+        val k = aliases[key] ?: key
+        return nameTerms.filter { it.first.key == k }.flatMap { it.second }
+            .filter { it.length in 3..22 && it.any { c -> c.isLetter() } }.distinct().take(n)
+    }
 
     /** Config short name first (e.g. "Apple"), then the full SIG name. */
     private fun coName(id: Int): String? = companyNames[id] ?: BtDb.company(id)

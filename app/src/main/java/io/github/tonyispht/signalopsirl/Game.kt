@@ -356,7 +356,8 @@ object Game {
             addXp(25, "NEW CATEGORY")
         }
         // The daily quests count what is new today, even if the device was found on an earlier day.
-        if (Daily.onDevice(key, cat, cls?.tier, matched)) changed = true
+        val model = cls?.label?.takeIf { isModelReason(cls.reason) }
+        if (Daily.onDevice(key, cat, cls?.tier, matched, model, "x:$addr")) changed = true
         if (changed) finishChange()
     }
 
@@ -647,3 +648,8 @@ object Game {
         }
     }
 }
+
+/** True when a classification names an exact product model (not just a kind of device). */
+fun isModelReason(reason: String): Boolean =
+    reason.startsWith("Fast Pair model") || reason.startsWith("Apple model") ||
+        reason.startsWith("Samsung model") || reason.startsWith("Microsoft Swift Pair name")
