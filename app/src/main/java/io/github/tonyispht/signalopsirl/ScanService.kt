@@ -206,6 +206,7 @@ class ScanService : Service() {
     override fun onCreate() {
         super.onCreate()
         store = Store(this)
+        Hidden.load(store)
         Game.init(this)
         ScanBus.ensureNicknames(store)
         TrackerWatch.load(store)
@@ -961,6 +962,7 @@ class ScanService : Service() {
         if (heardKeys.size > 20_000) heardKeys.clear()
         if (store.newSkipAnonOn && d.name == null && d.cls?.anon == true && d.identity == 0 && Vendors.isLocal(addr)) return
         if (alerted) return // a target / tier alert already made noise for this device
+        if (Hidden.isHidden(d)) return // hidden by the user: no new-device alert or sound
         if (store.alertNewOn && now >= learnUntil) {
             fireAlert(d, isNew = true)
         } else if (store.soundOn && store.newSoundOn && !ScanBus.alertsMuted.value && now - lastNewSound >= NEW_SOUND_GAP_MS) {

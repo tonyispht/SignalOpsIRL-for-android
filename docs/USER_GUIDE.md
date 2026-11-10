@@ -411,6 +411,18 @@ a rotating phone shows up as a stream of rows; that is the point of the mode. Tu
 Still not controllable from the app: on Android 12+ the manifest marks `BLUETOOTH_SCAN` as `neverForLocation`, and Android then filters some BLE
 beacon adverts (iBeacon / Eddystone style) out of scan results before the app sees them.
 
+## Hiding devices
+Your own phone, watch, earbuds and TV (or a neighbour's speaker) show up on every scan. Tap one in **Signals** and choose
+**HIDE** to take it off the list.
+- A device with a public address is hidden by its address. A named device with a random address (which changes) is hidden
+  by its name, so every device with that exact name is hidden. An unnamed random-address device is hidden by its address
+  until that address changes.
+- Hidden devices stop new-device alerts and sounds. They still count for XP, quests and the Signal Dex, and **your target
+  list still alerts on them**. Tracker warnings are never hidden; use **MARK AS MINE** for your own tracker.
+- The **HIDDEN** filter chip in Signals shows only hidden devices; tap one and choose **UNHIDE** to bring it back.
+- **Settings > List > Hidden devices** lists everything hidden, with **UNHIDE** for each and **UNHIDE ALL**.
+- The **RAW** list still shows every address, hidden or not.
+
 ## PIN lock for the target list
 **Settings > Target list** can be locked with a 4-8 digit PIN (**SET PIN** inside the section). With a PIN set, opening the section asks for it,
 and the list, its import/export and the PIN controls stay hidden until it is entered. It locks again when Settings is closed. Wrong guesses are
