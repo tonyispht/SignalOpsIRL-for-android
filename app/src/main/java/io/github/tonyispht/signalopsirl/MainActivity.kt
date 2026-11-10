@@ -135,6 +135,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.Stroke
@@ -418,6 +419,11 @@ fun App(store: Store) {
     var tab by rememberSaveable { mutableStateOf(MainTab.SCAN) }
     val settingsOpen = tab == MainTab.SETTINGS
     var pinned by remember { mutableStateOf(store.pinned) }
+    // devices hidden from Signals (see Hidden); hiddenGen bumps whenever the list changes
+    remember(store) { Hidden.load(store); true }
+    var hiddenGen by remember { mutableIntStateOf(0) }
+    val hiddenKeys = remember(hiddenGen) { Hidden.keys() }
+    var hiddenOpen by remember { mutableStateOf(false) }
     var textSize by remember { mutableIntStateOf(store.textSize) }
     var tourOpen by remember { mutableStateOf(false) }
     var sigQuery by rememberSaveable { mutableStateOf("") }
@@ -427,6 +433,9 @@ fun App(store: Store) {
     var sigToolsOpen by rememberSaveable { mutableStateOf(false) }
     var locatorOpen by remember { mutableStateOf(false) }
     var report by remember { mutableStateOf<SessionReport?>(null) }
+    // after a scan: the SESSION CARD READY bar, and the full report dialog it opens
+    var cardBar by remember { mutableStateOf(false) }
+    var reportView by remember { mutableStateOf(false) }
     var reportOn by remember { mutableStateOf(store.sessionReportOn) }
     var pickTargets by remember { mutableStateOf(false) }
     var setPage by rememberSaveable { mutableStateOf("ALERTS") }
@@ -488,49 +497,44 @@ fun App(store: Store) {
             sessionAlerts = 0
             sessionKnown = devices.keys.toSet()
         }
+        var summary: SessionSummary? = null
         if (was != Phase.IDLE && phase == Phase.IDLE) {
             val dur = System.currentTimeMillis() - sessionStart
+            val seen = devices.values.filter { it.lastSeen >= sessionStart }
+            val ds = Dex.state.value
+            val cats = Classifier.categories()
+            val peak = seen.maxByOrNull { it.rssi }
+            val peakName = peak?.let { nicks.nick(it.address) ?: it.name ?: it.cls?.label }
+            val kindKeys = seen.mapNotNull { it.cls?.category }.distinct()
+            val newTypes = ds.categories.filter { c -> ds.entries.any { it.key == "T:" + c.key && it.first >= sessionStart } }
+            val rare = kindKeys.map { it to rarityOf(it) }.filter { it.second.ordinal >= Rarity.RARE.ordinal }
+                .sortedByDescending { it.second.ordinal }
+                .map { (k, r) -> (cats.firstOrNull { it.key == k }?.title ?: k) to r }
+            val models = seen.mapNotNull { d -> d.cls?.takeIf { isModelReason(it.reason) }?.label }.distinct()
+            val fresh = seen.count { it.address !in sessionKnown }
+            val targets = seen.count { it.matched }
+            val xpGain = (game.xp - sessionXp).coerceAtLeast(0L)
+            report = null; cardBar = false; reportView = false
             if (reportOn && dur >= 20_000L) {
-                val seen = devices.values.filter { it.lastSeen >= sessionStart }
-                val ds = Dex.state.value
-                val cats = Classifier.categories()
-                val peak = seen.maxByOrNull { it.rssi }
                 report = SessionReport(
-                    durationMs = dur,
-                    heard = seen.size,
-                    fresh = seen.count { it.address !in sessionKnown },
-                    alerts = sessionAlerts,
-                    xp = (game.xp - sessionXp).coerceAtLeast(0L),
-                    newTypes = ds.categories.filter { c -> ds.entries.any { it.key == "T:" + c.key && it.first >= sessionStart } },
-                    rare = seen.mapNotNull { it.cls?.category }.distinct()
-                        .map { it to rarityOf(it) }.filter { it.second.ordinal >= Rarity.RARE.ordinal }
-                        .sortedByDescending { it.second.ordinal }
-                        .map { (k, r) -> (cats.firstOrNull { it.key == k }?.title ?: k) to r },
-                    models = seen.mapNotNull { d -> d.cls?.takeIf { isModelReason(it.reason) }?.label }.distinct(),
-                    peakName = peak?.let { nicks.nick(it.address) ?: it.name ?: it.cls?.label },
-                    peakRssi = peak?.rssi
+                    durationMs = dur, heard = seen.size, fresh = fresh, alerts = sessionAlerts, xp = xpGain,
+                    newTypes = newTypes, rare = rare, models = models, peakName = peakName, peakRssi = peak?.rssi,
+                    startedAt = sessionStart, kinds = kindKeys.size, targets = targets,
+                    level = game.level, rank = Game.titleName(game.equipped)
                 )
+                cardBar = true
             }
+            summary = SessionSummary(
+                durationMs = dur, heard = seen.size, fresh = fresh, targets = targets, alerts = sessionAlerts,
+                peakRssi = peak?.rssi, peakName = peakName ?: peak?.address, xp = xpGain,
+                kinds = kindKeys.size, newTypes = newTypes.size, rare = rare.size, models = models.size,
+                bestFind = rare.firstOrNull()?.let { (t, r) -> "${r.label}  $t" },
+                level = game.level, cardReady = report != null
+            )
         }
         if (!fx || !crtPowerFx || !booted) return@LaunchedEffect
         if (was == Phase.IDLE && phase != Phase.IDLE) crtEvent = CrtEvent(offFirst = false)
-        else if (was != Phase.IDLE && phase == Phase.IDLE) {
-            val seen = devices.values.filter { it.lastSeen >= sessionStart }
-            val peak = seen.maxByOrNull { it.rssi }
-            crtEvent = CrtEvent(
-                offFirst = true,
-                summary = if (report != null) null else SessionSummary(
-                    durationMs = System.currentTimeMillis() - sessionStart,
-                    heard = seen.size,
-                    fresh = seen.count { it.address !in sessionKnown },
-                    targets = seen.count { it.matched },
-                    alerts = sessionAlerts,
-                    peakRssi = peak?.rssi,
-                    peakName = peak?.let { it.name ?: it.address },
-                    xp = (game.xp - sessionXp).coerceAtLeast(0L)
-                )
-            )
-        }
+        else if (was != Phase.IDLE && phase == Phase.IDLE) crtEvent = CrtEvent(offFirst = true, summary = summary)
     }
 
     // Keep the display on only while a scan is actually running.
@@ -1173,7 +1177,9 @@ fun App(store: Store) {
                     // Raw list: every address its own row, nothing merged, grouped or filtered, and a much longer list.
                     val mergeEff = mergeRot && !rawList
                     val q = sigQuery.trim()
-                    val sigPred: ((SeenDevice) -> Boolean)? = if (rawList || (q.isEmpty() && sigFilter.isEmpty())) null else { dd ->
+                    val hideOn = !rawList && hiddenKeys.isNotEmpty()
+                    val hiddenNow = if (hideOn) devices.values.count { Hidden.matches(hiddenKeys, it) } else 0
+                    val sigPred: ((SeenDevice) -> Boolean)? = if (rawList || (q.isEmpty() && sigFilter.isEmpty() && !hideOn)) null else { dd ->
                         val okQ = q.isEmpty() || listOfNotNull(
                             nicks.nick(dd.address), dd.name, dd.cls?.label, dd.cls?.title, dd.appleModel, dd.address,
                             if (Vendors.isLocal(dd.address)) null else Vendors.lookup(dd.address)
@@ -1183,11 +1189,14 @@ fun App(store: Store) {
                             "" -> true
                             "ALERT" -> dd.cls?.tier == Tier.ALERT
                             "POSSIBLE" -> dd.cls?.tier == Tier.POSSIBLE
+                            "HIDDEN" -> Hidden.matches(hiddenKeys, dd)
                             "PINNED" -> dd.address in pinned
                             "NAMED" -> dd.name != null || nicks.nick(dd.address) != null
                             else -> dd.cls?.category == sigFilter
                         }
-                        okQ && okF
+                        // hidden devices only show under the HIDDEN filter
+                        val okH = sigFilter == "HIDDEN" || !hideOn || !Hidden.matches(hiddenKeys, dd)
+                        okQ && okF && okH
                     }
                     val signalRows = buildSignalRows(
                         devices.values, mergeEff, onePerName && !rawList, nowMs, nicks,
@@ -1201,7 +1210,8 @@ fun App(store: Store) {
                         signalRows.grouped.takeIf { it > 0 }?.let { "GROUPED $it" },
                         signalRows.sameName.takeIf { it > 0 }?.let { "SAME NAME $it" },
                         signalRows.filteredNew.takeIf { it > 0 }?.let { "NEW FILTER $it" },
-                        signalRows.searched.takeIf { it > 0 }?.let { "SEARCH/FILTER $it" },
+                        hiddenNow.takeIf { it > 0 && sigFilter != "HIDDEN" }?.let { "HIDDEN BY YOU $it" },
+                        (signalRows.searched - if (sigFilter != "HIDDEN") hiddenNow else 0).takeIf { it > 0 }?.let { "SEARCH/FILTER $it" },
                         signalRows.cut.takeIf { it > 0 }?.let { "LIST LIMIT $it" }
                     )
                     // Rows that leave the list dissolve out as "ghosts" instead of just vanishing.
@@ -1274,7 +1284,7 @@ fun App(store: Store) {
                                     val catsPresent = devices.values.mapNotNull { it.cls }.filter { it.category != null }
                                         .groupBy { it.category!! }.map { (k, v) -> Triple(k, (v.first().icon + " " + v.first().title).trim(), v.size) }
                                         .sortedByDescending { it.third }
-                                    val keys = (listOf("", "PINNED", "NAMED", "POSSIBLE") + catsPresent.map { it.first } +
+                                    val keys = (listOf("", "PINNED", "NAMED", "POSSIBLE") + (if (hiddenKeys.isNotEmpty()) listOf("HIDDEN") else emptyList()) + catsPresent.map { it.first } +
                                         listOf(sigFilter)).distinct()
                                     ChipRow(keys, sigFilter, { k ->
                                         when (k) {
@@ -1282,6 +1292,7 @@ fun App(store: Store) {
                                             "PINNED" -> "\u2605 PINNED"
                                             "NAMED" -> "NAMED"
                                             "POSSIBLE" -> "POSSIBLE"
+                                            "HIDDEN" -> "HIDDEN ${hiddenKeys.size}"
                                             else -> catsPresent.firstOrNull { it.first == k }?.let { "${it.second} ${it.third}" } ?: k
                                         }
                                     }) { sigFilter = it }
@@ -1300,13 +1311,13 @@ fun App(store: Store) {
                                     .padding(horizontal = 10.dp, vertical = 3.dp)
                             ) {
                                 Text(
-                                    "HEARD ${signalRows.all} \u00B7 SHOWN ${shown.size} \u00B7 HIDDEN ${signalRows.hidden}" +
+                                    "HEARD ${signalRows.all} \u00B7 SHOWN ${shown.size} \u00B7 NOT SHOWN ${signalRows.hidden}" +
                                         (if (statsOpen) "  \u25B4" else "  \u25BE"),
                                     fontSize = 9.sp, maxLines = 1, color = statsColor
                                 )
                                 if (statsOpen) {
                                     if (hiddenParts.isNotEmpty()) {
-                                        Text("HIDDEN BY: " + hiddenParts.joinToString(" \u00B7 "), fontSize = 9.sp, color = statsColor)
+                                        Text("NOT SHOWN: " + hiddenParts.joinToString(" \u00B7 "), fontSize = 9.sp, color = statsColor)
                                     }
                                     if (prunedN > 0) {
                                         Text("CLEANED UP $prunedN OLD DEVICES", fontSize = 9.sp, color = statsColor)
@@ -1644,7 +1655,7 @@ fun App(store: Store) {
                         }
                         SettingToggle(
                             "SESSION REPORT", reportOn,
-                            "A SUMMARY OF NEW DEVICE TYPES, RARE FINDS, MODELS AND XP AFTER EACH SCAN, WITH A SHARE BUTTON."
+                            "AFTER SCANS OF 20 S OR MORE, A SESSION CARD YOU CAN VIEW OR SHARE AS AN IMAGE. THE STANDBY SCREEN REPORT (CRT EFFECTS) SHOWS EITHER WAY."
                         ) { reportOn = !reportOn; store.sessionReportOn = reportOn }
                         SettingToggle(
                             "FULLSCREEN", fullscreen,
@@ -2033,6 +2044,47 @@ fun App(store: Store) {
                             }
                         }
                         }
+                        if (pg("LIST") && settingMatches("Hidden devices", "hide", "hidden", "ignore", "unhide")) {
+                        SectionHeader("Hidden devices (${hiddenKeys.size})", hiddenOpen, { hiddenOpen = !hiddenOpen })
+                        if (hiddenOpen) {
+                            Column(
+                                Modifier.padding(start = 10.dp, end = 10.dp, bottom = 10.dp),
+                                verticalArrangement = Arrangement.spacedBy(2.dp)
+                            ) {
+                                Text(
+                                    "Hidden devices leave the Signals list and stop new-device alerts. They still count for XP and the Dex, " +
+                                        "your target list still alerts on them, and tracker warnings are never hidden. " +
+                                        "To hide one, tap it in Signals and choose HIDE. The HIDDEN filter in Signals shows them.",
+                                    fontSize = 11.sp, lineHeight = 14.sp, color = cs.onSurfaceVariant
+                                )
+                                val list = remember(hiddenGen) { Hidden.list() }
+                                if (list.isEmpty()) {
+                                    Text("Nothing hidden.", fontSize = 11.sp, color = cs.onSurfaceVariant)
+                                }
+                                list.forEach { e ->
+                                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                                        Column(Modifier.weight(1f)) {
+                                            Text(e.label, fontSize = 12.sp, fontWeight = FontWeight.Bold, maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis)
+                                            Text((if (e.byName) "BY NAME: " else "BY ADDRESS: ") + e.value, fontSize = 9.sp,
+                                                fontFamily = Mono, color = cs.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                        }
+                                        MiniButton("UNHIDE", cs.secondary, vPad = 10.dp) {
+                                            Hidden.unhideKey(store, e.key); hiddenGen++
+                                        }
+                                    }
+                                }
+                                if (list.size > 1) {
+                                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                                        MiniButton("UNHIDE ALL", cs.error, vPad = 6.dp) {
+                                            Hidden.clear(store); hiddenGen++
+                                            if (sigFilter == "HIDDEN") sigFilter = ""
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        }
                         if (pg("DATA") && settingMatches("App updates", "update", "version", "github")) {
                         SectionHeader(
                             "App updates", updatesOpen, { updatesOpen = !updatesOpen },
@@ -2276,7 +2328,14 @@ fun App(store: Store) {
                         TrackerWatch.markMine(store, if (d.identity != 0) "id${d.identity}" else d.address, d.address)
                         mineTick++
                         picked = null
-                    }) else null
+                    }) else null,
+                    onHide = if (single) ({
+                        if (Hidden.isHidden(d)) Hidden.unhide(store, d)
+                        else Hidden.hide(store, d, nicks.nick(d.address) ?: d.name ?: p.title)
+                        hiddenGen++
+                        picked = null
+                    }) else null,
+                    isHidden = single && Hidden.matches(hiddenKeys, d)
                 )
             )
         }
@@ -2508,7 +2567,21 @@ fun App(store: Store) {
             )
         } else if (!booted) BootSequence { booted = true }
         if (tourOpen && termsOk && booted) TourDialog { tourOpen = false; store.tourDone = true }
-        report?.let { r -> SessionReportDialog(r, onShare = { shareText(ctx, r.shareText()) }, onDismiss = { report = null }) }
+        report?.let { r ->
+            val tintArgb = MaterialTheme.colorScheme.primary.toArgb()
+            if (reportView) SessionReportDialog(
+                r,
+                onShare = { SessionCard.share(ctx, r, tintArgb) },
+                onShareText = { shareText(ctx, r.shareText()) },
+                onDismiss = { reportView = false; cardBar = false; report = null }
+            )
+            // the bar waits until the cinematic standby report has been woken from
+            else if (cardBar && crtEvent == null) SessionCardBar(
+                onView = { reportView = true },
+                onShare = { SessionCard.share(ctx, r, tintArgb) },
+                onDismiss = { cardBar = false; report = null }
+            )
+        }
         if (pickTargets) PickTargetsDialog(
             devices.values, nicks, watch.toList(),
             onAddName = { addEntry(it) }, onAddMac = { addEntry(it) }

@@ -45,7 +45,10 @@ class DeviceActions(
     val onPin: (() -> Unit)?,
     val onNameTarget: (() -> Unit)?,
     val onMacTarget: (() -> Unit)?,
-    val onMine: (() -> Unit)?
+    val onMine: (() -> Unit)?,
+    /** Hide (or unhide) the device in the Signals list; null for grouped rows. */
+    val onHide: (() -> Unit)? = null,
+    val isHidden: Boolean = false
 )
 
 /**
@@ -184,6 +187,15 @@ fun DeviceDetailScreen(
                     ActionTile("RAW DATA", "Packets and decoded fields", cs.tertiary, Modifier.weight(1f)) { a.onRaw() }
                 }
                 a.onMine?.let { ActionTile("MARK AS MINE", "My own tracker: stop warning about it", cs.secondary, Modifier.fillMaxWidth()) { it() } }
+                a.onHide?.let {
+                    ActionTile(
+                        if (a.isHidden) "UNHIDE" else "HIDE",
+                        if (a.isHidden) "Show it in Signals again"
+                        else if (Hidden.keyFor(d).startsWith("NAME:")) "Hide every device with this name from Signals"
+                        else "Hide this device from Signals",
+                        cs.onSurfaceVariant, Modifier.fillMaxWidth()
+                    ) { it() }
+                }
             }
 
             // ---- details ----

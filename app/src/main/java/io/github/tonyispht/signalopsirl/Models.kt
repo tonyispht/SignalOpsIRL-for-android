@@ -377,6 +377,11 @@ class Store(context: Context) {
         get() = prefs.getInt("termsVersion", 0)
         set(v) = prefs.edit().putInt("termsVersion", v).apply()
 
+    /** Devices hidden from the Signals list, one "key<TAB>label" string each. See [Hidden]. */
+    var hiddenRaw: Set<String>
+        get() = prefs.getStringSet("hidden", emptySet())?.toSet() ?: emptySet()
+        set(v) = prefs.edit().putStringSet("hidden", v).apply()
+
     /** Pinned devices (addresses), shown at the top of the Signals list. */
     var pinned: Set<String>
         get() = prefs.getStringSet("pinned", emptySet())?.toSet() ?: emptySet()
