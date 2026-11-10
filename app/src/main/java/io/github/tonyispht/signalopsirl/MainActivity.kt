@@ -388,8 +388,6 @@ fun App(store: Store) {
     var newSoundType by remember { mutableIntStateOf(store.newSoundType) }
     var alertNew by remember { mutableStateOf(store.alertNewOn) }
     var skipAnon by remember { mutableStateOf(store.newSkipAnonOn) }
-    var autoAlert by remember { mutableStateOf(store.autoAlertOn) }
-    var autoPossible by remember { mutableStateOf(store.autoPossibleOn) }
     var cfgSummary by remember { mutableStateOf<String?>(null) }
     var useUsb by remember { mutableStateOf(store.useUsb) }
     var usbId by remember { mutableStateOf(store.usbId) }
@@ -1591,7 +1589,7 @@ fun App(store: Store) {
                         SettingToggle(
                             "SCAN WITH SCREEN OFF", screenOffScan,
                             hint = "ANDROID PAUSES UNFILTERED SCANS WHEN THE SCREEN TURNS OFF. WITH THIS ON, THE SCAN SWITCHES TO FILTERS BUILT FROM " +
-                                "YOUR TARGETS (MACS, COMPANY IDS, UUIDS, NAMES ALREADY SEEN) AND THE LAW-ENFORCEMENT SIGNATURES, AND KEEPS THE CPU AWAKE " +
+                                "YOUR TARGETS (MACS, COMPANY IDS, UUIDS, NAMES ALREADY SEEN), AND KEEPS THE CPU AWAKE " +
                                 "WHILE SCANNING. NEW-DEVICE ALERTS AND NAME-PART TARGETS NOT SEEN YET CANNOT WAKE IT. IT RETURNS TO A FULL SCAN WHEN THE SCREEN TURNS ON."
                         ) { screenOffScan = !screenOffScan; store.screenOffScanOn = screenOffScan }
                         if (screenOffScan) {
@@ -1789,13 +1787,6 @@ fun App(store: Store) {
                         }
                         if (pg("ALERTS")) {
                         GroupLabel("AUTO-ALERT")
-                        SettingToggle(
-                            "ALERT TIER", autoAlert,
-                            hint = "ALERT WHEN THE DEVICE DATABASE FLAGS A SIGNAL." + (cfgSummary?.let { "  DB: $it" } ?: "")
-                        ) { autoAlert = !autoAlert; store.autoAlertOn = autoAlert }
-                        SettingToggle("POSSIBLE TIER", autoPossible) {
-                            autoPossible = !autoPossible; store.autoPossibleOn = autoPossible
-                        }
                         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
                             MiniButton("TEST GAME FX", vPad = 4.dp) {
                                 if (gameFx) Game.testEffects()

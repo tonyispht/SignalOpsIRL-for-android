@@ -6,7 +6,6 @@ Ready-made target lists for Signal OPS IRL. None of them are loaded by default. 
 |---|---|---|
 | [`security_sweep_devices.txt`](security_sweep_devices.txt) | Hacking gadgets (Flipper Zero, Proxmark, HackRF...), ESP32 attack firmware, BLE spam, and the Bluetooth modules often hidden in card skimmers | Sweeping your home, car, office or event space; auditing your own gear |
 | [`tracker_devices.txt`](tracker_devices.txt) | AirTag, SmartTag, Tile, Chipolo and other item trackers | Checking your car and belongings for trackers you didn't put there |
-| [`law_enforcement_devices.txt`](law_enforcement_devices.txt) | Licence-plate cameras, body and in-car cameras, gunshot detectors and forensic tools | Awareness of public-safety technology around you |
 
 ## How to import
 

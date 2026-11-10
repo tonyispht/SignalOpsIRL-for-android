@@ -15,7 +15,6 @@ class UiKitTest {
 
     @Test fun rarity() {
         assertEquals(Rarity.COMMON, rarityOf("smartphones"))
-        assertEquals(Rarity.LEGENDARY, rarityOf("law_enforcement_tactical"))
         assertTrue(rarityOf("hobby_rc_drones").ordinal > Rarity.RARE.ordinal)
     }
 

@@ -230,13 +230,11 @@ private val EPIC_TYPES = setOf(
     "hacker_pentest", "hobby_rc_drones", "crypto_security_keys", "smart_glasses_ai_wearables", "card_skimmer_suspects",
     "aviation_marine_gliding", "military_defense_govt", "utilities_scada_smart_city", "ems_ambulance_fire_rescue"
 )
-private val LEGENDARY_TYPES = setOf("law_enforcement_tactical", "law_enforcement_possible")
 
 fun rarityOf(categoryKey: String): Rarity = when (categoryKey) {
     in COMMON_TYPES -> Rarity.COMMON
     in UNCOMMON_TYPES -> Rarity.UNCOMMON
     in EPIC_TYPES -> Rarity.EPIC
-    in LEGENDARY_TYPES -> Rarity.LEGENDARY
     else -> Rarity.RARE
 }
 

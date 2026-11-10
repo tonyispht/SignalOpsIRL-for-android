@@ -4,8 +4,8 @@ plugins {
 }
 
 // Bump both for every release. The release tag must be "v" + versionName (the workflow checks this).
-val appVersionCode = 140
-val appVersionName = "1.4.0"
+val appVersionCode = 141
+val appVersionName = "1.4.1"
 
 // Test builds (the workflow's manual "Run workflow" button) are numbered one below the release, so the public
 // release still installs over them through the in-app updater: e.g. 139 / "1.4.0-test.42".

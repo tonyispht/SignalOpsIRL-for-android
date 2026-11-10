@@ -259,15 +259,13 @@ UUIDs (including service-data UUIDs), appearance and payload instead.
 
 ## Device identification (scanner_config.json)
 `app/src/main/assets/scanner_config.json` is the same device database the desktop scanner script uses. Each
-signal in **Signals** gets a tag line showing what it was identified as (category, evidence, and ALERT / POSSIBLE
-tier). Evidence is checked in this order: direct alert/possible names, alert/possible MAC prefixes, category
-name terms (whole-word, in file order), name regexes, GATT service rules (advertised UUID lists and service-data UUIDs),
+signal in **Signals** gets a tag line showing what it was identified as (category and evidence). Evidence is
+checked in this order: category name terms (whole-word, in file order), name regexes, GATT service rules (advertised UUID lists and service-data UUIDs),
 built-in payload rules (iBeacon, Apple continuity types, Google Find Hub trackers, Microsoft Swift Pair and
 Connected Devices, Tile, Ruuvi, Eddystone), the advertised appearance or classic device class (`appearance_categories`),
 weak MAC-prefix hints, vendor name rules, then just the maker: SIG company name, owner of a company service UUID,
 or the IEEE owner of a public MAC address.
-To update it, replace the file with a newer export of the config and rebuild. In **Settings**, the AUTO chips
-make ALERT-tier and POSSIBLE-tier identifications fire the normal alert (both off by default).
+To update it, replace the file with a newer export of the config and rebuild.
 
 Unnamed devices that rotate their MAC (Apple Find My, bare company IDs, generic services) are grouped into one row with a count (×N).
 Scan mode, Target list and Bluetooth DB now live inside the **Settings** card. Signals show one line per device (name only);
@@ -287,12 +285,12 @@ USB mode; scanning is active (scan responses give names) and duplicates are not 
 ## Leveling game
 Everything you do in Signal OPS IRL now earns XP. The bar under the title shows your level, equipped title and progress; tap it for the
 **Operator profile** (stats, achievements and titles). Progress is saved on the phone and survives restarts.
-- **XP:** +10 for each new device, +25 the first time a kind of device is identified, +40 / +100 for a POSSIBLE / ALERT-tier find, +50
+- **XP:** +10 for each new device, +25 the first time a kind of device is identified, +50
   for a target-list hit, +30 for locating a device (tracked until it is stronger than -50 dBm), +15 for decoding a sensor or reading a
   name over GATT, +10 for naming a device, and +1 per minute of scanning. Level N needs 50 x N x (N-1) XP in total (100, 300, 600, 1000...).
 - **Counting is fair:** a device with a public address counts once per address. Devices that rotate their random address count once per
   name, and unnamed random-address devices give no device XP, so changing addresses can't be farmed.
-- **Achievements:** 20 of them (device counts, kinds identified, ALERT/POSSIBLE finds, locating, naming, sensors, scan time). Each gives bonus
+- **Achievements:** 20 of them (device counts, kinds identified, locating, naming, sensors, scan time). Each gives bonus
   XP and some unlock a title.
 - **Titles:** six rank titles unlock at levels 1, 5, 10, 15, 25 and 40; eight more come from achievements. Equip one from the **Titles** tab
   (or tap the title banner when it unlocks). The locked ones show how to get them.
@@ -317,7 +315,7 @@ The **DAILY QUESTS** card under the XP bar shows your streak, three progress bar
 Tap it for the **DAILY** tab of the profile.
 - **Quests:** every day brings 3 quests, one easy (+40 XP), one medium (+80) and one hard (+150), picked from a pool by the date (the same
   all day, never the same quest two days in a row). Goals are things like finding devices, scanning for a number of minutes, identifying
-  kinds of device, locating, naming, decoding sensors, ALERT/POSSIBLE finds and target list hits, all counted for that day only (a device
+  kinds of device, locating, naming, decoding sensors and target list hits, all counted for that day only (a device
   you found yesterday counts again today). A quest completes by itself the moment you reach the goal and pays right away.
 - **Perfect day:** finishing all 3 pays +150 XP more.
 - **Streak:** the first quest you finish each day counts the day, and the streak just adds up. **It can never be lost:** skipping days
@@ -413,15 +411,6 @@ a rotating phone shows up as a stream of rows; that is the point of the mode. Tu
 Still not controllable from the app: on Android 12+ the manifest marks `BLUETOOTH_SCAN` as `neverForLocation`, and Android then filters some BLE
 beacon adverts (iBeacon / Eddystone style) out of scan results before the app sees them.
 
-## How law-enforcement devices are identified
-The classifier no longer stops at the first clue. It gathers every law-enforcement clue in an advertisement (name, MAC prefix, the Flock battery
-maker's company ID, and the custom Flock Raven service UUIDs) and combines them:
-- **Strong clue alone = ALERT**: an Axon / Motorola public-safety / body-camera name, or a verified Axon, WatchGuard or Flock OUI.
-- **Weak clue alone = POSSIBLE**: shared component-vendor prefixes, radio or holster names, the Flock battery company ID, two Raven services.
-- **Two different kinds of weak clue = ALERT**, e.g. a weak OUI plus the Flock battery company ID. The same kind twice does not count.
-- The reason shown in the Signals row and tap menu lists every clue, e.g. `2 CLUES: OUI 70:C9:4E + company 0x09C8`.
-These are hints from public information, not proof, and they have not been checked against every real unit.
-
 ## PIN lock for the target list
 **Settings > Target list** can be locked with a 4-8 digit PIN (**SET PIN** inside the section). With a PIN set, opening the section asks for it,
 and the list, its import/export and the PIN controls stay hidden until it is entered. It locks again when Settings is closed. Wrong guesses are
@@ -433,9 +422,9 @@ not encrypt the phone's storage. If the PIN is forgotten, only clearing the app'
 so when the screen goes off the scan is restarted with filters built from your targets, and a partial wake lock keeps the CPU running while scanning.
 When the screen turns on again it returns to the full scan.
 - Filters can only match an exact address, exact name, company ID or service UUID. MAC targets, `CID:`/`MFG:`/`COMPANY:`/`APPLE:`, `UUID:`/`SVC:`/`SVCDATA:`, `EXACT:` map directly.
-  A name-part target (`flock`) uses every full name already heard that contains it, and a MAC prefix uses every address already heard with it,
+  A name-part target (`tile`) uses every full name already heard that contains it, and a MAC prefix uses every address already heard with it,
   so a device that was never seen with the screen on cannot be found by a name part alone. `ADV:` byte patterns and `REGEX:` cannot be filtered.
-- Devices already flagged and the law-enforcement signatures (Flock battery maker company ID, Raven services) are included when the auto-alerts are on.
+- Devices that already matched one of your targets are included too.
 - The app's own matcher still decides every packet, so alerts behave as before. New-device alerts cannot work with the screen off.
 - The status shows `SCREEN OFF: N FILTERS`, or a warning if nothing could be filtered.
 - Also use **ALLOW** under the switch so Android's battery optimization does not stop the service. USB adapters are not affected (they scan the same way either way).

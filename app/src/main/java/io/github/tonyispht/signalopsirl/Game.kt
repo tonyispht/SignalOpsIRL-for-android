@@ -114,9 +114,6 @@ object Game {
         Achievement("cat5", "TAXONOMIST", "Identify 5 kinds of device.", 60, goal = 5) { it.categories },
         Achievement("cat15", "FIELD BIOLOGIST", "Identify 15 kinds of device.", 200, "biologist", 15) { it.categories },
         Achievement("cat30", "KNOW-IT-ALL", "Identify 30 kinds of device.", 500, goal = 30) { it.categories },
-        Achievement("possible1", "SUSPICIOUS MIND", "Find a POSSIBLE-tier device.", 50) { it.possible },
-        Achievement("alert1", "TARGET ACQUIRED", "Find an ALERT-tier device.", 150, "hawkeye") { it.alerts },
-        Achievement("alert10", "PERSISTENT OBSERVER", "Find 10 ALERT-tier devices.", 400, goal = 10) { it.alerts },
         Achievement("watch1", "WATCHLIST HIT", "Match a device on your target list.", 50) { it.watch },
         Achievement("locate1", "FOX HUNTER", "Track a device until it is stronger than -50 dBm.", 100, "foxhunter") { it.locates },
         Achievement("locate10", "BLOODHOUND", "Locate 10 different devices.", 300, "bloodhound", 10) { it.locates },
@@ -164,7 +161,6 @@ object Game {
         GameTitle("operative", "OPERATIVE", level = 15),
         GameTitle("spymaster", "SPYMASTER", level = 25),
         GameTitle("legend", "LEGEND", level = 40),
-        GameTitle("hawkeye", "HAWKEYE"),
         GameTitle("foxhunter", "FOX HUNTER"),
         GameTitle("bloodhound", "BLOODHOUND"),
         GameTitle("collector", "COLLECTOR"),
@@ -331,17 +327,6 @@ object Game {
                 devices++
                 changed = true
                 addXp(10, "NEW DEVICE")
-            }
-            if (cls != null && cls.tier == Tier.ALERT && seen.add("A:$key")) {
-                newSeen.add("A:$key")
-                alerts++
-                changed = true
-                addXp(100, "ALERT-TIER FIND")
-            } else if (cls != null && cls.tier == Tier.POSSIBLE && seen.add("P:$key")) {
-                newSeen.add("P:$key")
-                possible++
-                changed = true
-                addXp(40, "POSSIBLE-TIER FIND")
             }
             if (matched && seen.add("W:$key")) {
                 newSeen.add("W:$key")

@@ -82,9 +82,6 @@ object Classifier {
 
     fun classify(e: Evidence): Classification? = db?.classify(e)
 
-    /** Company ID of the hardware maker found in Flock battery and camera modules (used for the screen-off filters). */
-    const val XUNTONG_ID = 0x09C8
-
     /** Company name for a manufacturer-data ID: the config's short name, else the full Bluetooth SIG list. */
     fun companyName(id: Int): String? = db?.companyName(id) ?: BtDb.company(id)
 
@@ -215,9 +212,7 @@ private val DEFAULT_TITLES = mapOf(
     "industrial_logistics" to ("📦" to "INDUSTRIAL · LOGISTICS"),
     "fitness_gym" to ("🏋" to "FITNESS · SPORTS SENSORS"),
     "pet_trackers" to ("🐾" to "PET TRACKERS"),
-    "smart_appliances" to ("🍳" to "SMART APPLIANCES"),
-    "law_enforcement_tactical" to ("🚨" to "LAW ENFORCEMENT GEAR"),
-    "law_enforcement_possible" to ("🚔" to "POSSIBLE LAW ENFORCEMENT / PUBLIC SAFETY")
+    "smart_appliances" to ("🍳" to "SMART APPLIANCES")
 )
 
 /**
@@ -299,10 +294,7 @@ private class Db(root: JSONObject) {
         }
 
         // The built-in rules create these on first use; make them exist now so the category list is complete from the start.
-        listOf(
-            "proximity_beacons", "trackers_valuables", "wearables_audio",
-            "law_enforcement_tactical", "law_enforcement_possible"
-        ).forEach { cat(it) }
+        listOf("proximity_beacons", "trackers_valuables", "wearables_audio").forEach { cat(it) }
 
         summary = "$termCount name terms · ${ouiLabel.size} OUIs · ${nameTerms.size} categories"
     }
@@ -322,8 +314,6 @@ private class Db(root: JSONObject) {
     }
 
     private fun core(e: Evidence, addr: String, nm: String): Classification? {
-        // 1-3. law-enforcement evidence (names, MAC prefix, company ID, service UUIDs), fused into one verdict
-        fuseLawEnforcement(e, addr, nm)?.let { return it }
         val prefix = addr.take(6)
         val conf = ouiConf[prefix]
         val ouiText = if (prefix.length == 6) prefix.chunked(2).joinToString(":") else prefix
@@ -465,80 +455,6 @@ private class Db(root: JSONObject) {
         }
     }
 
-    // ---- law-enforcement evidence fusion --------------------------------------------------------
-
-    /** One independent piece of evidence. [kind] says what sort it is, so the same sort never counts twice. */
-    private class Part(val kind: String, val weight: Int, val reason: String, val label: String? = null)
-
-    /**
-     * Collects every law-enforcement clue the advertisement carries instead of stopping at the first one:
-     *  - a strong clue (an Axon / Motorola public-safety name, a verified Axon / WatchGuard / Flock OUI) is an ALERT on its own;
-     *  - weak clues (shared component-vendor prefixes, the Flock battery maker's company ID, a few of the Raven service
-     *    UUIDs, a generic radio or holster name) are POSSIBLE on their own, and become an ALERT when two *different kinds*
-     *    of clue agree (for example a weak OUI plus the Flock battery company ID).
-     * The reason line lists every clue, so the Signals row and the tap menu show why the device was flagged.
-     */
-    private fun fuseLawEnforcement(e: Evidence, addr: String, nm: String): Classification? {
-        val parts = ArrayList<Part>(4)
-
-        if (nm.isNotEmpty()) {
-            val a = alertNames.firstOrNull { it.matches(nm) }
-            val p = possibleNames.firstOrNull { it.matches(nm) }
-            if (a != null) parts.add(Part("name", STRONG, "name ${q(a.text)}"))
-            else if (p != null) parts.add(Part("name", WEAK_NAME, "name ${q(p.text)}"))
-            else {
-                // a name term from the law-enforcement categories (checked here so it can combine with other clues)
-                loop@ for ((c, terms) in nameTerms) {
-                    if (c.key != "law_enforcement_tactical" && c.key != "law_enforcement_possible") continue
-                    for (t in terms) {
-                        if (hasWord(nm, t)) {
-                            parts.add(Part("name", if (c.key == "law_enforcement_tactical") STRONG else WEAK_NAME, "name ${q(t)}"))
-                            break@loop
-                        }
-                    }
-                }
-            }
-        }
-
-        val prefix = addr.take(6)
-        val ouiText = if (prefix.length == 6) prefix.chunked(2).joinToString(":") else prefix
-        when (ouiConf[prefix]) {
-            "alert" -> parts.add(Part("oui", STRONG, "OUI $ouiText", ouiLabel[prefix]))
-            "possible" -> parts.add(Part("oui", WEAK_OUI, "OUI $ouiText", ouiLabel[prefix]))
-        }
-
-        if (XUNTONG in e.companyIds) {
-            parts.add(Part("company", WEAK_COMPANY, "company 0x09C8", companyNames[XUNTONG] ?: "XUNTONG"))
-        }
-
-        // Company service UUIDs registered with the Bluetooth SIG: Axon's is used by its own gear only;
-        // Motorola Solutions' also appears on commercial radios, so it is weak on its own.
-        if (has16(e, AXON_SVC)) parts.add(Part("svcowner", 60, "Axon service FC81", "Axon device"))
-        else MOTOROLA_SOLUTIONS_SVC.firstOrNull { has16(e, it) }?.let {
-            parts.add(Part("svcowner", WEAK_COMPANY, "service ${hex4(it)}", "Motorola Solutions device"))
-        }
-
-        // Flock Raven gunshot detectors advertise a set of custom 0x3x00 services (from public research, not verified on every unit).
-        val raven = RAVEN_SERVICES.count { (it + ServiceRule.BASE_SUFFIX) in e.services }
-        if (raven >= 3) parts.add(Part("service", 60, "$raven Raven services", "Flock Raven (probable)"))
-        else if (raven == 2) parts.add(Part("service", 45, "2 Raven services", "Flock Raven (possible)"))
-        else if (raven == 1) parts.add(Part("service", 10, "1 Raven service"))
-
-        if (parts.isEmpty()) return null
-        val strongest = parts.maxOf { it.weight }
-        val total = parts.groupBy { it.kind }.values.sumOf { g -> g.maxOf { it.weight } }
-        val tier = when {
-            strongest >= STRONG || total >= 60 -> Tier.ALERT
-            total >= 25 -> Tier.POSSIBLE
-            else -> return null
-        }
-        val kinds = parts.map { it.kind }.distinct().size
-        val reason = (if (kinds > 1) "$kinds CLUES: " else "") + parts.joinToString(" + ") { it.reason }
-        val label = parts.firstNotNullOfOrNull { it.label }
-        val c = cat(if (tier == Tier.ALERT) "law_enforcement_tactical" else "law_enforcement_possible")
-        return make(c, tier, label, reason)
-    }
-
     private fun builtin(e: Evidence): Classification? {
         if (APPLE in e.companyIds) {
             when {
@@ -586,8 +502,6 @@ private class Db(root: JSONObject) {
 
     /** Config short name first (e.g. "Apple"), then the full SIG name. */
     private fun coName(id: Int): String? = companyNames[id] ?: BtDb.company(id)
-
-    private fun has16(e: Evidence, u: Int) = ("0000%04X".format(u) + ServiceRule.BASE_SUFFIX) in e.services
 
     fun companyIdsNamed(q: String): Set<Int> =
         companyNames.filterValues { it.contains(q, ignoreCase = true) }.keys
@@ -637,18 +551,8 @@ private class Db(root: JSONObject) {
     }
 
     companion object {
-        const val XUNTONG = 0x09C8
         const val TILE = 0x067C
         const val RUUVI = 0x0499
         const val MICROSOFT = 0x0006
-        const val AXON_SVC = 0xFC81
-        val MOTOROLA_SOLUTIONS_SVC = listOf(0xFE04, 0xFD8E)
-
-        // evidence weights for law-enforcement fusion
-        const val STRONG = 100
-        const val WEAK_NAME = 40
-        const val WEAK_OUI = 30
-        const val WEAK_COMPANY = 30
-        val RAVEN_SERVICES = listOf("00003100", "00003200", "00003300", "00003400", "00003500")
     }
 }
