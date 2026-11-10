@@ -106,14 +106,12 @@ object Daily {
             q("kinds6", "FIELD NOTES", "Identify 6 kinds of device today.", 1, 6, 80) { it.kinds },
             q("fox2", "DOUBLE TRACK", "Locate 2 different devices today.", 1, 2, 80) { it.locates },
             q("sens2", "SENSOR SWEEP", "Decode 2 different sensors today.", 1, 2, 80) { it.sensors },
-            q("hunch", "HUNCH", "Find a POSSIBLE-tier device today.", 1, 1, 80) { it.possible },
             q("model3", "AUDIOPHILE", "Identify 3 exact earbud, speaker or accessory models today.", 1, 3, 80) { it.models },
             q("home3", "SMART HOME", "Find 3 smart-home devices today.", 1, 3, 80) { it.home }
         ),
         listOf(
             q("drag", "DRAGNET", "Find 100 different devices today.", 2, 100, 150) { it.devices },
             q("stake", "STAKEOUT SHIFT", "Scan for 60 minutes today.", 2, 60, 150) { it.scanMin },
-            q("lock", "TARGET LOCK", "Find an ALERT-tier device today.", 2, 1, 150) { it.alerts },
             q("bull", "BULLSEYE", "Match a device on your target list today.", 2, 1, 150) { it.watch },
             q("kinds10", "ENCYCLOPEDIA", "Identify 10 kinds of device today.", 2, 10, 150) { it.kinds },
             q("fox3", "TRIPLE HUNT", "Locate 3 different devices today.", 2, 3, 150) { it.locates },

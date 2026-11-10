@@ -384,7 +384,7 @@ class ScanService : Service() {
             if (screenOff && store.screenOffScanOn) {
                 ScanBus.note.value =
                     if (filters.isNullOrEmpty()) "SCREEN OFF: NO FILTERABLE TARGETS, ANDROID MAY PAUSE RESULTS"
-                    else "SCREEN OFF: ${filters.size} FILTERS (TARGETS + LAW-ENFORCEMENT SIGNATURES)"
+                    else "SCREEN OFF: ${filters.size} FILTERS (TARGETS)"
             } else if (ScanBus.note.value?.startsWith("SCREEN OFF") == true) {
                 ScanBus.note.value = null
             }
@@ -499,7 +499,6 @@ class ScanService : Service() {
      *  - EXACT: and NAME:/plain name parts -> exact-name filters, using every full name already heard that contains the text
      *  - MAC prefixes                      -> address filters for every address already heard with that prefix
      *  - devices already flagged           -> their address and name
-     *  - the built-in law-enforcement signatures (Flock battery maker ID, Raven services) when auto-alerts are on
      */
     private fun buildScreenOffFilters(): List<ScanFilter> {
         val out = LinkedHashMap<String, ScanFilter>()
@@ -615,11 +614,6 @@ class ScanService : Service() {
             }
         }
 
-        // 3. built-in law-enforcement signatures
-        if (autoA || autoP) {
-            company(Classifier.XUNTONG_ID)
-            for (u in listOf("3100", "3200", "3300", "3400", "3500")) uuid(u)
-        }
         return out.values.toList()
     }
 

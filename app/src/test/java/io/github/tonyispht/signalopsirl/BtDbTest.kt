@@ -97,12 +97,6 @@ class BtDbTest {
         assertTrue(c.label!!.contains("Sennheiser"))
     }
 
-    @Test fun axonServiceIsLawEnforcement() {
-        val c = Classifier.classify(Evidence(RANDOM, null, services = setOf(svc(0xFC81))))!!
-        assertEquals(Tier.ALERT, c.tier)
-        assertEquals("law_enforcement_tactical", c.category)
-    }
-
     @Test fun nameRulesStillWin() {
         val c = Classifier.classify(Evidence(RANDOM, "Bash Bunny", services = setOf(svc(0x1812))))
         assertNotNull(c)
