@@ -522,12 +522,12 @@ class Store(context: Context) {
 
     /** Fire the normal alert when a device is identified as ALERT-tier by the built-in config rules. */
     var autoAlertOn: Boolean
-        get() = prefs.getBoolean("autoAlert", false)
+        get() = false // retired in 1.4.1 (no setting)
         set(v) = prefs.edit().putBoolean("autoAlert", v).apply()
 
     /** Same for POSSIBLE-tier identifications (weaker evidence). */
     var autoPossibleOn: Boolean
-        get() = prefs.getBoolean("autoPossible", false)
+        get() = false // retired in 1.4.1 (no setting)
         set(v) = prefs.edit().putBoolean("autoPossible", v).apply()
 
     /** True = scan through an external USB adapter instead of the phone's Bluetooth. */
