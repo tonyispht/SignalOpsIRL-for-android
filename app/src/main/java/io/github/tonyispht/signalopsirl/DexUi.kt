@@ -1,6 +1,9 @@
 package io.github.tonyispht.signalopsirl
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.shape.CutCornerShape
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -66,12 +69,18 @@ fun DexContent(state: DexState) {
                     item {
                         Column(verticalArrangement = Arrangement.spacedBy(4.dp), modifier = Modifier.padding(top = 6.dp)) {
                             val pct = if (total > 0) typesFound * 100 / total else 0
-                            Text(
-                                if (total > 0) "$typesFound of $total kinds of device found ($pct%)"
-                                else "Loading the list of device types...",
-                                color = GameViolet, fontSize = 13.sp, fontWeight = FontWeight.Bold
-                            )
-                            GameBar(if (total > 0) typesFound.toFloat() / total else 0f, height = 7.dp, color = GameViolet)
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                ProgressRing(if (total > 0) typesFound.toFloat() / total else 0f, GameViolet, "$pct%", "TYPES")
+                                Column(Modifier.padding(start = 12.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                                    Text(
+                                        if (total > 0) "$typesFound of $total kinds of device found"
+                                        else "Loading the list of device types...",
+                                        color = GameViolet, fontSize = 14.sp, fontWeight = FontWeight.Bold
+                                    )
+                                    Text("$mastered mastered  \u00B7  ${kinds.size} kinds  \u00B7  ${makers.size} makers",
+                                        color = cs.onSurfaceVariant, fontSize = 11.sp)
+                                }
+                            }
                             // progress per rarity
                             val byRarity = state.categories.groupBy { rarityOf(it.key) }
                             Rarity.values().forEach { r ->
@@ -151,7 +160,24 @@ private fun DexRow(
     icon: String, title: String, e: DexEntry?, fmt: SimpleDateFormat, locked: Boolean, hint: String?, rarity: Rarity? = null
 ) {
     val cs = MaterialTheme.colorScheme
-    Row(verticalAlignment = Alignment.CenterVertically) {
+    val edge = when {
+        locked -> cs.outline.copy(alpha = 0.35f)
+        rarity != null -> rarity.color.copy(alpha = 0.75f)
+        e != null && e.stars >= 3 -> GameGold.copy(alpha = 0.7f)
+        else -> GameViolet.copy(alpha = 0.5f)
+    }
+    val shape = CutCornerShape(topStart = 8.dp, bottomEnd = 8.dp)
+    Row(
+        Modifier.fillMaxWidth()
+            .background(
+                if (locked) Brush.horizontalGradient(listOf(Color.White.copy(alpha = 0.02f), Color.Transparent))
+                else Brush.horizontalGradient(listOf(edge.copy(alpha = 0.16f), Color.Transparent)),
+                shape
+            )
+            .border(1.dp, edge, shape)
+            .padding(horizontal = 8.dp, vertical = 7.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
         Text(
             if (locked) "?" else icon.ifEmpty { "\u25C8" }, fontSize = 18.sp,
             color = if (locked) cs.outline else Color.White, modifier = Modifier.width(30.dp)

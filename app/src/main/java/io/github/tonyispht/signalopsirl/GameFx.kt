@@ -1032,8 +1032,6 @@ fun GameProfileDialog(state: GameState, daily: DailyState, startTab: String, onD
                             }
                             item { StatRow("DEVICES FOUND", "%,d".format(s.devices)) }
                             item { StatRow("KINDS IDENTIFIED", "${s.categories}") }
-                            item { StatRow("ALERT-TIER FINDS", "${s.alerts}") }
-                            item { StatRow("POSSIBLE-TIER FINDS", "${s.possible}") }
                             item { StatRow("TARGET LIST HITS", "${s.watch}") }
                             item { StatRow("DEVICES LOCATED", "${s.locates}") }
                             item { StatRow("DEVICES NAMED", "${s.named}") }

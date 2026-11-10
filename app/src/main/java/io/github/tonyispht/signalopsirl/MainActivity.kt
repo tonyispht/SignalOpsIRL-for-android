@@ -358,7 +358,7 @@ fun App(store: Store) {
     var groupAnon by remember { mutableStateOf(store.groupAnonOn) }
     var autoStart by remember { mutableStateOf(store.autoStartOn) }
     var autoStartDone by rememberSaveable { mutableStateOf(false) }
-    remember(store) { ScanBus.ensureNicknames(store) }
+    remember(store) { ScanBus.ensureNicknames(store); true }
     val nickGen by ScanBus.nicknameGen.collectAsState()
     val nicks: Map<String, String> = remember(nickGen) { ScanBus.nicknames.toMap() }
     var renaming by remember { mutableStateOf<Picked?>(null) }
@@ -1274,14 +1274,13 @@ fun App(store: Store) {
                                     val catsPresent = devices.values.mapNotNull { it.cls }.filter { it.category != null }
                                         .groupBy { it.category!! }.map { (k, v) -> Triple(k, (v.first().icon + " " + v.first().title).trim(), v.size) }
                                         .sortedByDescending { it.third }
-                                    val keys = (listOf("", "PINNED", "NAMED", "ALERT", "POSSIBLE") + catsPresent.map { it.first } +
+                                    val keys = (listOf("", "PINNED", "NAMED", "POSSIBLE") + catsPresent.map { it.first } +
                                         listOf(sigFilter)).distinct()
                                     ChipRow(keys, sigFilter, { k ->
                                         when (k) {
                                             "" -> "ALL"
                                             "PINNED" -> "\u2605 PINNED"
                                             "NAMED" -> "NAMED"
-                                            "ALERT" -> "ALERT"
                                             "POSSIBLE" -> "POSSIBLE"
                                             else -> catsPresent.firstOrNull { it.first == k }?.let { "${it.second} ${it.third}" } ?: k
                                         }
@@ -1327,8 +1326,14 @@ fun App(store: Store) {
                                     newMin > 0 && !rawList -> "No new signals in the last $newMin min."
                                     else -> "No signals."
                                 }
+                                if (devices.isEmpty()) {
+                                    Box(Modifier.fillMaxWidth().padding(top = 16.dp, bottom = 4.dp), contentAlignment = Alignment.Center) {
+                                        ListeningRadar(active = running && fx)
+                                    }
+                                }
                                 Text(msg, fontSize = 13.sp, lineHeight = 17.sp, color = cs.onSurfaceVariant,
-                                    modifier = Modifier.padding(start = 10.dp, end = 10.dp, top = 4.dp, bottom = 12.dp))
+                                    textAlign = if (devices.isEmpty()) TextAlign.Center else TextAlign.Start,
+                                    modifier = Modifier.fillMaxWidth().padding(start = 10.dp, end = 10.dp, top = 4.dp, bottom = 12.dp))
                             }
                             mergeGhosts(shown, ghosts).forEach { entry ->
                               if (entry is RowGhost) {
@@ -1369,6 +1374,9 @@ fun App(store: Store) {
                                     else -> cs.onSurface
                                 }
                                 rowInfo[d.address] = GhostInfo(shownTitle, titleColor)
+                                val rarityColor = cls?.category?.let { rarityOf(it) }?.let { r ->
+                                    r.color.copy(alpha = when (r) { Rarity.COMMON -> 0.35f; Rarity.UNCOMMON -> 0.6f; else -> 0.95f })
+                                }
                                 // Age: rows dim as the device goes quiet (full strength up to 5 s, fading to 35% by 60 s).
                                 val ageMs = (nowMs - d.lastSeen).coerceAtLeast(0L)
                                 val fade = if (tracked) 1f
@@ -1396,6 +1404,16 @@ fun App(store: Store) {
                                             }
                                         )
                                         .drawBehind {
+                                            // rarity edge: the colour of the device type's Dex rarity (brighter for rarer types)
+                                            if (rarityColor != null) {
+                                                drawRect(rarityColor, size = Size(3.dp.toPx(), size.height))
+                                                drawRect(
+                                                    Brush.horizontalGradient(
+                                                        listOf(rarityColor.copy(alpha = 0.10f), Color.Transparent),
+                                                        startX = 0f, endX = size.width * 0.35f
+                                                    )
+                                                )
+                                            }
                                             val f = flash.value
                                             if (f > 0f) {
                                                 drawRect(cs.primary.copy(alpha = 0.30f * f))

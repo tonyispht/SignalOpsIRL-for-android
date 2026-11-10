@@ -108,7 +108,11 @@ fun DeviceDetailScreen(
                     if (pinned) Text("  ★", fontSize = 18.sp, color = GameGold)
                 }
                 if (cls != null && cls.category != null) {
-                    Text("${cls.icon} ${cls.title}".trim(), fontSize = 13.sp, color = tierColor, fontWeight = FontWeight.Bold)
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text("${cls.icon} ${cls.title}".trim(), fontSize = 13.sp, color = tierColor, fontWeight = FontWeight.Bold,
+                            modifier = Modifier.weight(1f, fill = false))
+                        Box(Modifier.padding(start = 8.dp)) { RarityBadge(rarityOf(cls.category)) }
+                    }
                 }
                 cls?.label?.takeIf { it != title }?.let { Text(it, fontSize = 13.sp, color = cs.onSurface) }
                 cls?.let { Text("Why: " + it.reason, fontSize = 11.sp, color = cs.onSurfaceVariant) }
@@ -131,8 +135,7 @@ fun DeviceDetailScreen(
             HudCard(border = cs.outline) {
                 Column(Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     Row(verticalAlignment = Alignment.Bottom) {
-                        Text("${live.rssi}", fontSize = 30.sp, fontWeight = FontWeight.Bold, color = heatSpectrum(((live.rssi + 100f) / 65f).coerceIn(0f, 1f)))
-                        Text(" dBm", fontSize = 13.sp, color = cs.onSurfaceVariant, modifier = Modifier.padding(bottom = 5.dp))
+                        SignalGauge(live.rssi)
                         Box(Modifier.weight(1f))
                         Column(horizontalAlignment = Alignment.End) {
                             Text(roughDistance(live.rssi), fontSize = 14.sp, fontWeight = FontWeight.Bold)
