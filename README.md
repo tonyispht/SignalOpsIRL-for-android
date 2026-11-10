@@ -22,7 +22,8 @@ It's also a practical way to learn how Bluetooth works and to check what your ow
   <img src="media/feature-4-level-up.png" width="24%" alt="Level up IRL">
 </p>
 
-▶️ **Watch the trailer:** [landscape](media/signal-ops-irl-promo.mp4) · [vertical](media/signal-ops-irl-promo-vertical.mp4)
+▶️ **Watch the trailer:** [Signal OPS IRL trailer](media/signal-ops-irl-trailer.mp4) (21 s, recorded in the app)  
+🎬 **Promo clips:** [landscape](media/signal-ops-irl-promo.mp4) · [vertical](media/signal-ops-irl-promo-vertical.mp4)
 
 ---
 
