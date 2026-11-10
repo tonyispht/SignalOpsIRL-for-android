@@ -135,6 +135,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.Stroke
@@ -432,6 +433,9 @@ fun App(store: Store) {
     var sigToolsOpen by rememberSaveable { mutableStateOf(false) }
     var locatorOpen by remember { mutableStateOf(false) }
     var report by remember { mutableStateOf<SessionReport?>(null) }
+    // after a scan: the SESSION CARD READY bar, and the full report dialog it opens
+    var cardBar by remember { mutableStateOf(false) }
+    var reportView by remember { mutableStateOf(false) }
     var reportOn by remember { mutableStateOf(store.sessionReportOn) }
     var pickTargets by remember { mutableStateOf(false) }
     var setPage by rememberSaveable { mutableStateOf("ALERTS") }
@@ -493,49 +497,44 @@ fun App(store: Store) {
             sessionAlerts = 0
             sessionKnown = devices.keys.toSet()
         }
+        var summary: SessionSummary? = null
         if (was != Phase.IDLE && phase == Phase.IDLE) {
             val dur = System.currentTimeMillis() - sessionStart
+            val seen = devices.values.filter { it.lastSeen >= sessionStart }
+            val ds = Dex.state.value
+            val cats = Classifier.categories()
+            val peak = seen.maxByOrNull { it.rssi }
+            val peakName = peak?.let { nicks.nick(it.address) ?: it.name ?: it.cls?.label }
+            val kindKeys = seen.mapNotNull { it.cls?.category }.distinct()
+            val newTypes = ds.categories.filter { c -> ds.entries.any { it.key == "T:" + c.key && it.first >= sessionStart } }
+            val rare = kindKeys.map { it to rarityOf(it) }.filter { it.second.ordinal >= Rarity.RARE.ordinal }
+                .sortedByDescending { it.second.ordinal }
+                .map { (k, r) -> (cats.firstOrNull { it.key == k }?.title ?: k) to r }
+            val models = seen.mapNotNull { d -> d.cls?.takeIf { isModelReason(it.reason) }?.label }.distinct()
+            val fresh = seen.count { it.address !in sessionKnown }
+            val targets = seen.count { it.matched }
+            val xpGain = (game.xp - sessionXp).coerceAtLeast(0L)
+            report = null; cardBar = false; reportView = false
             if (reportOn && dur >= 20_000L) {
-                val seen = devices.values.filter { it.lastSeen >= sessionStart }
-                val ds = Dex.state.value
-                val cats = Classifier.categories()
-                val peak = seen.maxByOrNull { it.rssi }
                 report = SessionReport(
-                    durationMs = dur,
-                    heard = seen.size,
-                    fresh = seen.count { it.address !in sessionKnown },
-                    alerts = sessionAlerts,
-                    xp = (game.xp - sessionXp).coerceAtLeast(0L),
-                    newTypes = ds.categories.filter { c -> ds.entries.any { it.key == "T:" + c.key && it.first >= sessionStart } },
-                    rare = seen.mapNotNull { it.cls?.category }.distinct()
-                        .map { it to rarityOf(it) }.filter { it.second.ordinal >= Rarity.RARE.ordinal }
-                        .sortedByDescending { it.second.ordinal }
-                        .map { (k, r) -> (cats.firstOrNull { it.key == k }?.title ?: k) to r },
-                    models = seen.mapNotNull { d -> d.cls?.takeIf { isModelReason(it.reason) }?.label }.distinct(),
-                    peakName = peak?.let { nicks.nick(it.address) ?: it.name ?: it.cls?.label },
-                    peakRssi = peak?.rssi
+                    durationMs = dur, heard = seen.size, fresh = fresh, alerts = sessionAlerts, xp = xpGain,
+                    newTypes = newTypes, rare = rare, models = models, peakName = peakName, peakRssi = peak?.rssi,
+                    startedAt = sessionStart, kinds = kindKeys.size, targets = targets,
+                    level = game.level, rank = Game.titleName(game.equipped)
                 )
+                cardBar = true
             }
+            summary = SessionSummary(
+                durationMs = dur, heard = seen.size, fresh = fresh, targets = targets, alerts = sessionAlerts,
+                peakRssi = peak?.rssi, peakName = peakName ?: peak?.address, xp = xpGain,
+                kinds = kindKeys.size, newTypes = newTypes.size, rare = rare.size, models = models.size,
+                bestFind = rare.firstOrNull()?.let { (t, r) -> "${r.label}  $t" },
+                level = game.level, cardReady = report != null
+            )
         }
         if (!fx || !crtPowerFx || !booted) return@LaunchedEffect
         if (was == Phase.IDLE && phase != Phase.IDLE) crtEvent = CrtEvent(offFirst = false)
-        else if (was != Phase.IDLE && phase == Phase.IDLE) {
-            val seen = devices.values.filter { it.lastSeen >= sessionStart }
-            val peak = seen.maxByOrNull { it.rssi }
-            crtEvent = CrtEvent(
-                offFirst = true,
-                summary = if (report != null) null else SessionSummary(
-                    durationMs = System.currentTimeMillis() - sessionStart,
-                    heard = seen.size,
-                    fresh = seen.count { it.address !in sessionKnown },
-                    targets = seen.count { it.matched },
-                    alerts = sessionAlerts,
-                    peakRssi = peak?.rssi,
-                    peakName = peak?.let { it.name ?: it.address },
-                    xp = (game.xp - sessionXp).coerceAtLeast(0L)
-                )
-            )
-        }
+        else if (was != Phase.IDLE && phase == Phase.IDLE) crtEvent = CrtEvent(offFirst = true, summary = summary)
     }
 
     // Keep the display on only while a scan is actually running.
@@ -1656,7 +1655,7 @@ fun App(store: Store) {
                         }
                         SettingToggle(
                             "SESSION REPORT", reportOn,
-                            "A SUMMARY OF NEW DEVICE TYPES, RARE FINDS, MODELS AND XP AFTER EACH SCAN, WITH A SHARE BUTTON."
+                            "AFTER SCANS OF 20 S OR MORE, A SESSION CARD YOU CAN VIEW OR SHARE AS AN IMAGE. THE STANDBY SCREEN REPORT (CRT EFFECTS) SHOWS EITHER WAY."
                         ) { reportOn = !reportOn; store.sessionReportOn = reportOn }
                         SettingToggle(
                             "FULLSCREEN", fullscreen,
@@ -2568,7 +2567,21 @@ fun App(store: Store) {
             )
         } else if (!booted) BootSequence { booted = true }
         if (tourOpen && termsOk && booted) TourDialog { tourOpen = false; store.tourDone = true }
-        report?.let { r -> SessionReportDialog(r, onShare = { shareText(ctx, r.shareText()) }, onDismiss = { report = null }) }
+        report?.let { r ->
+            val tintArgb = MaterialTheme.colorScheme.primary.toArgb()
+            if (reportView) SessionReportDialog(
+                r,
+                onShare = { SessionCard.share(ctx, r, tintArgb) },
+                onShareText = { shareText(ctx, r.shareText()) },
+                onDismiss = { reportView = false; cardBar = false; report = null }
+            )
+            // the bar waits until the cinematic standby report has been woken from
+            else if (cardBar && crtEvent == null) SessionCardBar(
+                onView = { reportView = true },
+                onShare = { SessionCard.share(ctx, r, tintArgb) },
+                onDismiss = { cardBar = false; report = null }
+            )
+        }
         if (pickTargets) PickTargetsDialog(
             devices.values, nicks, watch.toList(),
             onAddName = { addEntry(it) }, onAddMac = { addEntry(it) }

@@ -28,7 +28,7 @@ Open this folder in Android Studio (Koala or newer, JDK 17). Let Gradle sync, pl
 - **Signal Dex:** every device type has a rarity (common to legendary) with progress per rarity, and locked types show
   example device names to look for.
 - **Daily quests:** new quests for exact earbud/speaker models, smart-home devices, trackers and sensors.
-- **Session report:** after STANDBY (scans of 20 s or more) a report of new types, rare finds, models and XP, with SHARE.
+- **Session report:** after STANDBY the screen powers down and the report types in: time, devices heard, new devices, kinds, new Dex types, rare finds, models, targets, peak signal, best find, XP and level. After scans of 20 s or more, waking the screen shows a **SESSION CARD READY** bar: **VIEW** opens the full report with a preview of the card, **SHARE** sends the card as an image (1080 x 1350) with a text summary. Turn the report off in Settings > Display (SESSION REPORT).
   Turn it off in **Settings > DISPLAY**.
 - **Notification:** while scanning it shows live counts (devices, trackers, alerts) with **Mute** (silences alert sounds
   and vibration for this scan) and **Stop**.

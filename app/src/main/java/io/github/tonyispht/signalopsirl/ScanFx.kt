@@ -324,7 +324,16 @@ data class SessionSummary(
     val alerts: Int,
     val peakRssi: Int?,
     val peakName: String?,
-    val xp: Long
+    val xp: Long,
+    val kinds: Int = 0,
+    val newTypes: Int = 0,
+    val rare: Int = 0,
+    val models: Int = 0,
+    /** Rarest type heard, e.g. "EPIC  HACKER / PENTEST". */
+    val bestFind: String? = null,
+    val level: Int = 0,
+    /** True when a shareable session card is waiting for after the screen wakes. */
+    val cardReady: Boolean = false
 )
 
 private const val SUMMARY_W = 28
@@ -343,6 +352,10 @@ private fun summaryRows(s: SessionSummary): List<SRow> {
         },
         SRow("DEVICES HEARD", count(s.heard.toLong())),
         SRow("NEW DEVICES", count(s.fresh.toLong())),
+        SRow("KINDS OF DEVICE", count(s.kinds.toLong())),
+        SRow("NEW DEX TYPES", count(s.newTypes.toLong())),
+        SRow("RARE+ FINDS", count(s.rare.toLong())),
+        SRow("MODELS SPOTTED", count(s.models.toLong())),
         SRow("TARGETS FOUND", count(s.targets.toLong())),
         SRow("ALERTS", count(s.alerts.toLong())),
         SRow("PEAK SIGNAL") { p ->
@@ -355,7 +368,13 @@ private fun summaryRows(s: SessionSummary): List<SRow> {
         val name = nm.take(SUMMARY_W - 4)
         rows += SRow("") { p -> name.take((name.length * p).toInt()) }
     }
+    s.bestFind?.let { bf ->
+        val t = bf.take(SUMMARY_W)
+        rows += SRow("BEST FIND") { "" }
+        rows += SRow("") { p -> t.take((t.length * p).toInt()) }
+    }
     rows += SRow("XP EARNED", count(s.xp, prefix = "+"))
+    if (s.level > 0) rows += SRow("OPERATOR LEVEL", count(s.level.toLong()))
     return rows
 }
 
@@ -394,6 +413,7 @@ fun CrtPowerOverlay(ev: CrtEvent, sound: Boolean, onDone: () -> Unit) {
         }
     }
     val rows = remember(ev) { ev.summary?.let { summaryRows(it) } ?: emptyList() }
+    val cardReady = ev.summary?.cardReady == true
     val tint = MaterialTheme.colorScheme.primary
     // While standing by, the overlay swallows touches; the first touch wakes the screen.
     val touch = if (ev.offFirst) {
@@ -425,7 +445,7 @@ fun CrtPowerOverlay(ev: CrtEvent, sound: Boolean, onDone: () -> Unit) {
         } else if (t < CrtEvent.OFF_MS) {
             drawPowerOff(t / CrtEvent.OFF_MS, tint)
         } else {
-            drawStandby(now, if (t0 == 0L) 0L else now - t0 - CrtEvent.OFF_MS, rows, waiting, tint)
+            drawStandby(now, if (t0 == 0L) 0L else now - t0 - CrtEvent.OFF_MS, rows, waiting, tint, cardReady)
             if (wakeAt != 0L) {
                 val e = (now - wakeAt).coerceAtLeast(0L)
                 if (e < STATIC_MS) drawStaticBurst(e, now, tint)
@@ -500,7 +520,7 @@ private fun DrawScope.drawWake(q: Float, at: Offset, tint: Color) {
 }
 
 /** The black STANDBY screen: grain, scanlines, a slow roll bar, a blinking cursor and the session report typing in. */
-private fun DrawScope.drawStandby(now: Long, k: Long, rows: List<SRow>, waiting: Boolean, tint: Color) {
+private fun DrawScope.drawStandby(now: Long, k: Long, rows: List<SRow>, waiting: Boolean, tint: Color, cardReady: Boolean = false) {
     val w = size.width
     val h = size.height
     drawRect(Bg)
@@ -528,7 +548,8 @@ private fun DrawScope.drawStandby(now: Long, k: Long, rows: List<SRow>, waiting:
     if (now % 7000 < 70) drawRect(tint.copy(alpha = 0.35f), Offset(0f, rnd.nextFloat() * h), Size(w, 2.dp.toPx()))
 
     // layout: title above a fixed-height report block, whole thing vertically centred
-    val lh = 18.dp.toPx()
+    // line height shrinks a little for long reports so everything fits between STANDBY and the wake hint
+    val lh = minOf(18.dp.toPx(), (h - 170.dp.toPx()) / (rows.size + 3).coerceAtLeast(1))
     val blockH = if (rows.isEmpty()) 0f else (rows.size + 2) * lh
     val titleY = h / 2f - blockH / 2f
     val kk = k.coerceAtLeast(0L)
@@ -568,7 +589,9 @@ private fun DrawScope.drawStandby(now: Long, k: Long, rows: List<SRow>, waiting:
     if (waiting) {
         summaryPaint.textSize = 10.sp.toPx()
         summaryPaint.color = withAlpha(tint.toArgb(), 0.3f + 0.3f * (0.5f + 0.5f * sin(now / 450f)))
-        drawContext.canvas.nativeCanvas.drawText("TOUCH TO WAKE", w / 2f, h - 48.dp.toPx(), summaryPaint)
+        drawContext.canvas.nativeCanvas.drawText(
+            if (cardReady) "TOUCH TO WAKE  \u00B7  SESSION CARD READY" else "TOUCH TO WAKE", w / 2f, h - 48.dp.toPx(), summaryPaint
+        )
     }
 }
 

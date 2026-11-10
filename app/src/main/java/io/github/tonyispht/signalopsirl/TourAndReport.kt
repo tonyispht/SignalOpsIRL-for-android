@@ -1,5 +1,10 @@
 package io.github.tonyispht.signalopsirl
 
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.border
+import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.toArgb
 import android.content.Context
 import android.content.Intent
 import androidx.compose.foundation.background
@@ -88,7 +93,14 @@ data class SessionReport(
     /** Exact product models seen this session. */
     val models: List<String>,
     val peakName: String?,
-    val peakRssi: Int?
+    val peakRssi: Int?,
+    val startedAt: Long = 0L,
+    /** Kinds of device (categories) heard this session. */
+    val kinds: Int = 0,
+    val targets: Int = 0,
+    /** Operator level and equipped title when the session ended. */
+    val level: Int = 0,
+    val rank: String = ""
 ) {
     fun shareText(): String = buildString {
         val min = (durationMs / 60_000L).coerceAtLeast(1)
@@ -104,14 +116,24 @@ data class SessionReport(
 
 /** The session report shown after a scan stops, with a SHARE button. */
 @Composable
-fun SessionReportDialog(r: SessionReport, onShare: () -> Unit, onDismiss: () -> Unit) {
+fun SessionReportDialog(r: SessionReport, onShare: () -> Unit, onShareText: () -> Unit, onDismiss: () -> Unit) {
     val cs = MaterialTheme.colorScheme
+    val tint = cs.primary.toArgb()
+    val card = remember(r) { SessionCard.render(r, tint).asImageBitmap() }
     Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
         Box(Modifier.fillMaxWidth().padding(14.dp)) {
             HudCard(border = cs.primary) {
                 Column(Modifier.padding(14.dp).heightIn(max = 560.dp).verticalScroll(rememberScrollState()),
                     verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text("// SESSION REPORT", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = cs.primary, letterSpacing = 1.sp)
+                    // the shareable card itself, as it will look when shared
+                    Image(card, "Session card", Modifier.fillMaxWidth().aspectRatio(1080f / 1350f).border(1.dp, cs.outline))
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Stat("KINDS", "${r.kinds}", Modifier.weight(1f))
+                        Stat("TARGETS", "${r.targets}", Modifier.weight(1f))
+                        Stat("MODELS", "${r.models.size}", Modifier.weight(1f))
+                        Stat("LEVEL", if (r.level > 0) "${r.level}" else "-", Modifier.weight(1f))
+                    }
                     val min = r.durationMs / 60_000L
                     val sec = (r.durationMs / 1000L) % 60
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -150,7 +172,8 @@ fun SessionReportDialog(r: SessionReport, onShare: () -> Unit, onDismiss: () -> 
                     }
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
                         MiniButton("CLOSE", cs.onSurfaceVariant) { onDismiss() }
-                        MiniButton("SHARE", cs.primary) { onShare() }
+                        MiniButton("SHARE TEXT", cs.secondary) { onShareText() }
+                        MiniButton("SHARE IMAGE", cs.primary) { onShare() }
                     }
                 }
             }
